@@ -77,29 +77,3 @@ public sealed partial class IncrementalBookCollection(string libraryId, AbsApiCl
         }
     }
 }
-
-public static class Format
-{
-    public static string Time(double seconds)
-    {
-        if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
-        var t = TimeSpan.FromSeconds(seconds);
-        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
-    }
-
-    public static string Duration(double seconds)
-    {
-        var t = TimeSpan.FromSeconds(Math.Max(0, seconds));
-        return t.TotalHours >= 1 ? $"{(int)t.TotalHours} Std. {t.Minutes} Min." : $"{t.Minutes} Min.";
-    }
-
-    public static string StripHtml(string? html)
-    {
-        if (string.IsNullOrWhiteSpace(html)) return "";
-        var text = System.Text.RegularExpressions.Regex.Replace(html, @"<\s*(br|/p|/div|/li)\s*/?>", "\n",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
-        text = System.Net.WebUtility.HtmlDecode(text);
-        return System.Text.RegularExpressions.Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
-    }
-}

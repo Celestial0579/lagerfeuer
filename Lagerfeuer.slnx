@@ -1,5 +1,9 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Lagerfeuer.Core/Lagerfeuer.Core.csproj" />
     <Project Path="src/Lagerfeuer/Lagerfeuer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj" />
   </Folder>
 </Solution>

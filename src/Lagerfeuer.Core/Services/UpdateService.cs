@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
@@ -26,19 +27,39 @@ public sealed class UpdateService
     /// <summary>Argument für den Neustart nach einem Update: die neue Instanz wartet auf das Ende der alten.</summary>
     public const string AfterUpdateArg = "--after-update";
 
-    // Reihenfolge wichtig: CreateClient() verwendet CurrentVersion.
-    public static Version CurrentVersion { get; } = Normalize(typeof(App).Assembly.GetName().Version ?? new Version(0, 0, 0));
+    private static readonly Assembly AppAssembly = Assembly.GetEntryAssembly() ?? typeof(UpdateService).Assembly;
 
-    private static readonly HttpClient Http = CreateClient();
+    // Reihenfolge wichtig: CreateClient() verwendet CurrentVersion.
+    public static Version CurrentVersion { get; } = Normalize(AppAssembly.GetName().Version ?? new Version(0, 0, 0));
+
+    private static readonly HttpClient SharedHttp = CreateClient();
 
     /// <summary>Single-File-EXE (portabel) statt Installation?</summary>
-    public static bool IsPortable => string.IsNullOrEmpty(typeof(App).Assembly.Location);
+    public static bool IsPortable => string.IsNullOrEmpty(AppAssembly.Location);
 
-    private static string Rid => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
+    private static string CurrentRid => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
+
+    private readonly HttpClient _http;
+    private readonly Version _current;
+    private readonly bool _portable;
+    private readonly string _rid;
+    private readonly string? _downloadDirectory;
+
+    public UpdateService() : this(SharedHttp, CurrentVersion, IsPortable, CurrentRid) { }
+
+    /// <summary>Für Tests: HTTP, laufende Version, Variante und Architektur vorgeben.</summary>
+    internal UpdateService(HttpClient http, Version current, bool portable, string rid, string? downloadDirectory = null)
+    {
+        _http = http;
+        _current = current;
+        _portable = portable;
+        _rid = rid;
+        _downloadDirectory = downloadDirectory;
+    }
 
     public async Task<UpdateInfo?> CheckAsync(CancellationToken ct = default)
     {
-        using var resp = await Http.GetAsync(
+        using var resp = await _http.GetAsync(
             $"https://api.github.com/repos/{RepositoryOwner}/{RepositoryName}/releases/latest", ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // noch kein Release
         if (!resp.IsSuccessStatusCode)
@@ -46,10 +67,10 @@ public sealed class UpdateService
 
         var release = await resp.Content.ReadFromJsonAsync<GitHubRelease>(ct);
         if (release is null || release.Draft || release.Prerelease) return null;
-        if (!TryParseVersion(release.TagName, out var version) || version <= CurrentVersion) return null;
+        if (!TryParseVersion(release.TagName, out var version) || version <= _current) return null;
 
         var asset = release.Assets.FirstOrDefault(a => a.Name.EndsWith(
-            IsPortable ? $"-{Rid}.exe" : $"-{Rid}-setup.exe", StringComparison.OrdinalIgnoreCase));
+            _portable ? $"-{_rid}.exe" : $"-{_rid}-setup.exe", StringComparison.OrdinalIgnoreCase));
 
         return new UpdateInfo(version, release.Name is { Length: > 0 } n ? n : release.TagName, release.HtmlUrl,
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
@@ -59,12 +80,12 @@ public sealed class UpdateService
     public async Task<string> DownloadAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct = default)
     {
         // Portabel: neben die laufende EXE (gleiches Laufwerk → atomares Umbenennen möglich).
-        var target = IsPortable
-            ? Environment.ProcessPath + ".new"
+        var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, asset.Name)
+            : _portable ? Environment.ProcessPath + ".new"
             : Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update", asset.Name);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
-        using var resp = await Http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var resp = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
         var total = resp.Content.Headers.ContentLength ?? asset.Size;
 
@@ -133,7 +154,7 @@ public sealed class UpdateService
         }
     }
 
-    private static bool TryParseVersion(string? tag, out Version version)
+    internal static bool TryParseVersion(string? tag, out Version version)
     {
         version = new Version(0, 0, 0);
         if (string.IsNullOrWhiteSpace(tag)) return false;

@@ -20,6 +20,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Tests
+        run: dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj -c Release
+
       - name: Version aus dem Tag übernehmen
         shell: pwsh
         run: |

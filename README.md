@@ -6,6 +6,12 @@
 
 <p align="center">Hörbücher aus deinem <a href="https://www.audiobookshelf.org/">Audiobookshelf</a> – als native Windows-App.</p>
 
+<p align="center">
+  <a href="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml"><img src="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Celestial0579/lagerfeuer/releases/latest"><img src="https://img.shields.io/github/v/release/Celestial0579/lagerfeuer?color=AB5019" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-GPL--3.0-33414B" alt="GPL-3.0" /></a>
+</p>
+
 Lagerfeuer ist ein Windows-Client für Audiobookshelf, gebaut mit WinUI 3 (Windows App SDK 2.5) und .NET 10.
 Die API-Anbindung wurde gegen den Quellcode von Audiobookshelf **v2.37.1** geprüft. Der Server muss mindestens Version **2.26** haben (JWT-Tokens).
 
@@ -94,6 +100,20 @@ pwsh build/publish.ps1 -Platform x64,ARM64 -Installer
 
 Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeuer`.
 
+### Tests
+
+Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
+- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
+- **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
+- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen.
+- **Cache-Verwaltung, Datenmodelle und Formatierung.**
+
+```bash
+dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj
+```
+
+Auf GitHub laufen die Tests bei jedem Push und Pull Request ([`ci.yml`](.github/workflows/ci.yml)) sowie vor jedem Release.
+
 ### Release veröffentlichen
 
 1. Version in `src/Lagerfeuer/Lagerfeuer.csproj` erhöhen.
@@ -104,20 +124,23 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
    ```bash
    git push origin v0.2.0
    ```
-3. Der Workflow [`release.yml`](.github/workflows/release.yml) baut beide Architekturen und legt das GitHub-Release mit allen Dateien an. Die installierten Apps finden es danach von selbst.
+3. Der Workflow [`release.yml`](.github/workflows/release.yml) führt die Tests aus, baut beide Architekturen und legt das GitHub-Release mit allen Dateien an. Die installierten Apps finden es danach von selbst.
 
 ## Projektstruktur
 
 ```
-src/Lagerfeuer/
+src/Lagerfeuer.Core/    UI-unabhängige Logik (getestet)
   Services/   AbsApiClient (REST + Token-Refresh), OpenIdLogin (SSO), CachingHttpStream (Streaming-Cache),
-              CacheManager/CoverCache, PlayerService (Wiedergabe, Sync, SMTC), UpdateService (GitHub-Releases),
-              SingleInstance/ProtocolRegistration, AppSettings/CredentialStore/Log
+              CacheManager/CoverCache, UpdateService (GitHub-Releases), SingleInstance/ProtocolRegistration,
+              AppSettings/CredentialStore/Log, Format
+  Models/     DTOs der Audiobookshelf-API
+src/Lagerfeuer/         WinUI-3-App
+  Services/   PlayerService (Wiedergabe, Sync, SMTC)
   Views/      Login, Weiterhören, Bibliothek, Buch, Einstellungen
   Controls/   PlayerBar, BookTile, CoverImage
-  Models/     DTOs der Audiobookshelf-API
-installer/    NSIS-Skript
-build/        publish.ps1 (portable EXE + Installer)
+tests/Lagerfeuer.Tests/ xUnit-v3-Tests
+installer/              NSIS-Skript
+build/                  publish.ps1 (portable EXE + Installer)
 ```
 
 ## Roadmap

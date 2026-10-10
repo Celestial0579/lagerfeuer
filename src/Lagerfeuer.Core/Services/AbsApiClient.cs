@@ -40,14 +40,18 @@ public sealed class AbsApiClient : IDisposable
     /// <summary>Refresh ist fehlgeschlagen – Benutzer muss sich neu anmelden.</summary>
     public event EventHandler? SessionExpired;
 
-    public AbsApiClient()
+    public AbsApiClient() : this(new SocketsHttpHandler
     {
-        var handler = new SocketsHttpHandler
-        {
-            AutomaticDecompression = DecompressionMethods.All,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            UseCookies = false,
-        };
+        AutomaticDecompression = DecompressionMethods.All,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        UseCookies = false,
+    })
+    {
+    }
+
+    /// <summary>Mit eigenem HTTP-Handler (z.B. für Tests).</summary>
+    public AbsApiClient(HttpMessageHandler handler)
+    {
         // Kein globales Timeout: Audio-Downloads laufen lange. API-Aufrufe nutzen ApiTimeout.
         _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("Lagerfeuer-Windows/0.1");

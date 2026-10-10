@@ -71,6 +71,10 @@ public sealed class CachingHttpStream : Stream
     public static bool IsFileComplete(string dataPath)
         => TryLoadMap(dataPath, out _, out var have) && have.All(h => h);
 
+    /// <summary>Anteil der bereits lokal gespeicherten Daten laut .map-Datei (0 bis 1).</summary>
+    public static double GetCachedFraction(string dataPath)
+        => TryLoadMap(dataPath, out _, out var have) && have.Length > 0 ? (double)have.Count(h => h) / have.Length : 0;
+
     public static async Task<CachingHttpStream> OpenAsync(AbsApiClient api, string contentPath, string dataPath,
         CancellationToken ct)
     {
