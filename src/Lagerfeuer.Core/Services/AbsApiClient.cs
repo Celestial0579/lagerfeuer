@@ -173,14 +173,60 @@ public sealed class AbsApiClient : IDisposable
     public async Task<List<Library>> GetLibrariesAsync(CancellationToken ct = default)
         => (await SendJsonAsync<LibrariesResponse>(HttpMethod.Get, "api/libraries", null, ct)).Libraries;
 
-    public Task<LibraryItemsResponse> GetLibraryItemsAsync(string libraryId, int page, int limit, CancellationToken ct = default)
+    public Task<LibraryItemsResponse> GetLibraryItemsAsync(string libraryId, int page, int limit, LibraryQuery? query = null,
+        CancellationToken ct = default)
         => SendJsonAsync<LibraryItemsResponse>(HttpMethod.Get,
-            $"api/libraries/{libraryId}/items?limit={limit}&page={page}&sort=media.metadata.title&minified=1", null, ct);
+            $"api/libraries/{libraryId}/items?limit={limit}&page={page}&minified=1&{(query ?? LibraryQuery.Default).ToQueryString()}", null, ct);
+
+    public Task<SeriesListResponse> GetSeriesAsync(string libraryId, int page, int limit, CancellationToken ct = default)
+        => SendJsonAsync<SeriesListResponse>(HttpMethod.Get,
+            $"api/libraries/{libraryId}/series?limit={limit}&page={page}&sort=name", null, ct);
+
+    /// <summary>Bücher einer Serie in Lesereihenfolge (der Server sortiert bei Serienfilter nach Band).</summary>
+    public async Task<List<LibraryItem>> GetSeriesBooksAsync(string libraryId, string seriesId, CancellationToken ct = default)
+        => (await SendJsonAsync<LibraryItemsResponse>(HttpMethod.Get,
+            $"api/libraries/{libraryId}/items?limit=500&page=0&minified=1&filter={LibraryQuery.EncodeFilter("series", seriesId)}", null, ct)).Results;
+
+    public async Task<List<Author>> GetAuthorsAsync(string libraryId, CancellationToken ct = default)
+        => (await SendJsonAsync<AuthorsResponse>(HttpMethod.Get, $"api/libraries/{libraryId}/authors?sort=name", null, ct)).Authors;
+
+    /// <summary>Autor mit Büchern und Serien.</summary>
+    public Task<Author> GetAuthorAsync(string authorId, CancellationToken ct = default)
+        => SendJsonAsync<Author>(HttpMethod.Get, $"api/authors/{authorId}?include=items,series", null, ct);
+
+    public async Task<byte[]?> GetAuthorImageAsync(string authorId, CancellationToken ct = default)
+    {
+        using var cts = WithTimeout(ct);
+        using var resp = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get,
+            Resolve($"api/authors/{authorId}/image?width=400&format=jpeg")), HttpCompletionOption.ResponseContentRead, cts.Token);
+        if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(resp);
+        return await resp.Content.ReadAsByteArrayAsync(cts.Token);
+    }
+
+    // ---------- Lesezeichen ----------
+
+    public async Task<List<Bookmark>> GetBookmarksAsync(string itemId, CancellationToken ct = default)
+        => (await SendJsonAsync<BookmarksResponse>(HttpMethod.Get, $"api/me/bookmarks/{itemId}", null, ct)).Bookmarks;
+
+    public Task<Bookmark> CreateBookmarkAsync(string itemId, double time, string title, CancellationToken ct = default)
+        => SendJsonAsync<Bookmark>(HttpMethod.Post, $"api/me/item/{itemId}/bookmark", new { time, title }, ct);
+
+    public Task<Bookmark> RenameBookmarkAsync(string itemId, double time, string title, CancellationToken ct = default)
+        => SendJsonAsync<Bookmark>(HttpMethod.Patch, $"api/me/item/{itemId}/bookmark", new { time, title }, ct);
+
+    /// <summary>
+    /// Löscht ein Lesezeichen. Der Server vergleicht die Zeit exakt als Zahl – daher verlustfrei
+    /// und kulturunabhängig formatieren ("R"), sonst meldet er Erfolg, ohne zu löschen.
+    /// </summary>
+    public Task DeleteBookmarkAsync(string itemId, double time, CancellationToken ct = default)
+        => SendNoContentAsync(HttpMethod.Delete,
+            $"api/me/item/{itemId}/bookmark/{time.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}", null, ct);
 
     public async Task<List<LibraryItem>> SearchAsync(string libraryId, string query, CancellationToken ct = default)
         => (await SendJsonAsync<SearchResponse>(HttpMethod.Get,
-                $"api/libraries/{libraryId}/search?q={Uri.EscapeDataString(query)}&limit=50", null, ct))
-            .Book.Select(b => b.LibraryItem).ToList();
+                $"api/libraries/{libraryId}/search?q={Uri.EscapeDataString(query)}&limit=50", null, ct)) is var r
+            ? r.Book.Concat(r.Podcast).Select(b => b.LibraryItem).ToList() : [];
 
     public Task<LibraryItem> GetItemAsync(string itemId, CancellationToken ct = default)
         => SendJsonAsync<LibraryItem>(HttpMethod.Get, $"api/items/{itemId}?expanded=1&include=progress", null, ct);
@@ -215,8 +261,10 @@ public sealed class AbsApiClient : IDisposable
         DeviceName = Environment.MachineName,
     };
 
-    public Task<PlaybackSession> StartPlaybackAsync(string itemId, string deviceId, CancellationToken ct = default)
-        => SendJsonAsync<PlaybackSession>(HttpMethod.Post, $"api/items/{itemId}/play", new
+    /// <summary>Startet eine Playback-Session für ein Buch bzw. (mit episodeId) eine Podcast-Folge.</summary>
+    public Task<PlaybackSession> StartPlaybackAsync(string itemId, string deviceId, string? episodeId = null, CancellationToken ct = default)
+        => SendJsonAsync<PlaybackSession>(HttpMethod.Post,
+            episodeId is null ? $"api/items/{itemId}/play" : $"api/items/{itemId}/play/{episodeId}", new
         {
             deviceInfo = CreateDeviceInfo(deviceId),
             forceDirectPlay = true,
@@ -251,8 +299,8 @@ public sealed class AbsApiClient : IDisposable
             new { currentTime, timeListened, duration }, ct);
 
     public Task UpdateProgressAsync(string itemId, double currentTime, double duration, bool isFinished,
-        CancellationToken ct = default)
-        => SendNoContentAsync(HttpMethod.Patch, $"api/me/progress/{itemId}", new
+        string? episodeId = null, CancellationToken ct = default)
+        => SendNoContentAsync(HttpMethod.Patch, episodeId is null ? $"api/me/progress/{itemId}" : $"api/me/progress/{itemId}/{episodeId}", new
         {
             currentTime,
             duration,

@@ -73,6 +73,33 @@ public sealed partial class PlayerBar : UserControl
     private void OnStop(object sender, RoutedEventArgs e) => _ = Player.StopAsync();
     private void OnMiniPlayer(object sender, RoutedEventArgs e) => App.MainWindow.ShowMiniPlayer();
 
+    private async void OnAddBookmark(object sender, RoutedEventArgs e)
+    {
+        if (Player.ItemId is not { } itemId) return;
+        if (App.IsOffline)
+        {
+            App.MainWindow.ShowError("Lesezeichen können nur mit Server-Verbindung gesetzt werden.");
+            return;
+        }
+        var time = Math.Round(Player.Position, 1);
+        var title = string.IsNullOrWhiteSpace(Player.ChapterTitle) ? $"Lesezeichen {Format.Time(time)}" : Player.ChapterTitle;
+        try
+        {
+            var bookmark = await App.Api.CreateBookmarkAsync(itemId, time, title);
+            if (App.User is { } user)
+            {
+                user.Bookmarks.RemoveAll(b => b.LibraryItemId == bookmark.LibraryItemId && b.Time == bookmark.Time);
+                user.Bookmarks.Add(bookmark);
+            }
+            App.RaiseBookmarksChanged();
+            App.MainWindow.ShowInfo($"Lesezeichen gesetzt: {title} ({Format.Time(time)})");
+        }
+        catch (Exception ex)
+        {
+            App.MainWindow.ShowError($"Lesezeichen konnte nicht gesetzt werden: {ex.Message}");
+        }
+    }
+
     private void OnOpenItem(object sender, RoutedEventArgs e)
     {
         if (Player.ItemId is { } id) OpenItemRequested?.Invoke(this, id);

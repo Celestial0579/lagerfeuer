@@ -33,6 +33,16 @@ public sealed partial class CoverImage : Grid
     public static readonly DependencyProperty DecodeWidthProperty = DependencyProperty.Register(
         nameof(DecodeWidth), typeof(int), typeof(CoverImage), new PropertyMetadata(300));
 
+    public static readonly DependencyProperty AuthorIdProperty = DependencyProperty.Register(
+        nameof(AuthorId), typeof(string), typeof(CoverImage), new PropertyMetadata(null, (d, _) => ((CoverImage)d).Load()));
+
+    /// <summary>Statt eines Covers das Bild eines Autors anzeigen.</summary>
+    public string? AuthorId
+    {
+        get => (string?)GetValue(AuthorIdProperty);
+        set => SetValue(AuthorIdProperty, value);
+    }
+
     public string? ItemId
     {
         get => (string?)GetValue(ItemIdProperty);
@@ -45,22 +55,28 @@ public sealed partial class CoverImage : Grid
         set => SetValue(DecodeWidthProperty, value);
     }
 
+    private string? CurrentKey => AuthorId is { Length: > 0 } a ? "author:" + a : ItemId;
+
     private async void Load()
     {
-        var id = ItemId;
+        var key = CurrentKey;
         _image.Source = null;
+        _placeholder.Glyph = AuthorId is { Length: > 0 } ? "\uE77B" : "\uE8D6";
         _placeholder.Visibility = Visibility.Visible;
-        if (string.IsNullOrEmpty(id)) return;
+        if (string.IsNullOrEmpty(key)) return;
+        var id = key;
 
         try
         {
-            var path = await App.Covers.GetCoverPathAsync(id);
-            if (path is null || id != ItemId) return;
+            var path = AuthorId is { Length: > 0 } authorId
+                ? await App.Covers.GetAuthorImagePathAsync(authorId)
+                : await App.Covers.GetCoverPathAsync(ItemId!);
+            if (path is null || id != CurrentKey) return;
 
             var bitmap = new BitmapImage { DecodePixelWidth = DecodeWidth, DecodePixelType = DecodePixelType.Logical };
             using (var fs = File.OpenRead(path))
                 await bitmap.SetSourceAsync(fs.AsRandomAccessStream());
-            if (id != ItemId) return;
+            if (id != CurrentKey) return;
 
             _image.Source = bitmap;
             _placeholder.Visibility = Visibility.Collapsed;

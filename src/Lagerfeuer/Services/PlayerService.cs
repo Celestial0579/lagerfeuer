@@ -118,7 +118,7 @@ public sealed partial class PlayerService : ObservableObject
     public string? EpisodeId => _session?.EpisodeId;
 
     /// <summary>Nach jedem erfolgreichen Sync/Close – z.B. um Fortschrittsanzeigen zu aktualisieren.</summary>
-    public event EventHandler<(string ItemId, double CurrentTime, double Duration)>? ProgressSynced;
+    public event EventHandler<(string ItemId, string? EpisodeId, double CurrentTime, double Duration)>? ProgressSynced;
 
     partial void OnPlaybackRateChanged(double value)
     {
@@ -135,9 +135,10 @@ public sealed partial class PlayerService : ObservableObject
 
     // ---------- Steuerung ----------
 
-    public async Task PlayItemAsync(string itemId, double? startAt = null)
+    /// <summary>Spielt ein Buch bzw. (mit episodeId) eine Podcast-Folge.</summary>
+    public async Task PlayItemAsync(string itemId, double? startAt = null, string? episodeId = null)
     {
-        if (_session?.LibraryItemId == itemId)
+        if (_session is not null && _session.LibraryItemId == itemId && _session.EpisodeId == episodeId)
         {
             if (startAt is { } t) await SeekAsync(t);
             Play();
@@ -149,13 +150,13 @@ public sealed partial class PlayerService : ObservableObject
         ErrorMessage = null;
         try
         {
-            var session = await StartSessionAsync(itemId);
+            var session = await StartSessionAsync(itemId, episodeId);
             if (session.AudioTracks.Count == 0)
                 throw new AbsApiException("Dieses Element enthält keine abspielbaren Audiodateien.");
 
             session.AudioTracks.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
             _session = session;
-            if (_localSession is null)
+            if (_localSession is null && episodeId is null)
             {
                 // Buchdaten lokal sichern: ist alles gehört/geladen, geht es später auch offline.
                 if (_cache.GetLocalItem(itemId) is null) _cache.SaveLocalItem(LocalItem.FromSession(session));
@@ -197,7 +198,7 @@ public sealed partial class PlayerService : ObservableObject
     /// Startet eine Session am Server – oder, wenn dieser nicht erreichbar ist und das Buch vollständig
     /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird.
     /// </summary>
-    private async Task<PlaybackSession> StartSessionAsync(string itemId)
+    private async Task<PlaybackSession> StartSessionAsync(string itemId, string? episodeId)
     {
         _localSession = null;
         IsOfflineSession = false;
@@ -205,9 +206,9 @@ public sealed partial class PlayerService : ObservableObject
         {
             try
             {
-                return await _api.StartPlaybackAsync(itemId, _settings.DeviceId);
+                return await _api.StartPlaybackAsync(itemId, _settings.DeviceId, episodeId);
             }
-            catch (AbsApiException ex) when (ex.Status is null && CanPlayOffline(itemId))
+            catch (AbsApiException ex) when (ex.Status is null && episodeId is null && CanPlayOffline(itemId))
             {
                 Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {itemId} offline.");
             }
@@ -360,12 +361,12 @@ public sealed partial class PlayerService : ObservableObject
             try
             {
                 await _api.CloseSessionAsync(session.Id, current, listened, Duration);
-                ProgressSynced?.Invoke(this, (session.LibraryItemId, current, Duration));
+                ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
             }
             catch (Exception ex)
             {
                 Log.Error("Session konnte nicht geschlossen werden", ex);
-                try { await _api.UpdateProgressAsync(session.LibraryItemId, current, Duration, false); }
+                try { await _api.UpdateProgressAsync(session.LibraryItemId, current, Duration, false, session.EpisodeId); }
                 catch (Exception ex2) { Log.Error("Fortschritt konnte nicht gespeichert werden", ex2); }
             }
         }
@@ -572,8 +573,8 @@ public sealed partial class PlayerService : ObservableObject
         if (_localSession is not null) return; // Offline: "beendet" ergibt sich beim Hochladen aus der Position
         try
         {
-            await _api.UpdateProgressAsync(_session.LibraryItemId, Duration, Duration, isFinished: true);
-            ProgressSynced?.Invoke(this, (_session.LibraryItemId, Duration, Duration));
+            await _api.UpdateProgressAsync(_session.LibraryItemId, Duration, Duration, isFinished: true, episodeId: _session.EpisodeId);
+            ProgressSynced?.Invoke(this, (_session.LibraryItemId, _session.EpisodeId, Duration, Duration));
         }
         catch (Exception ex)
         {
@@ -691,7 +692,7 @@ public sealed partial class PlayerService : ObservableObject
         try
         {
             await _api.SyncSessionAsync(session.Id, current, listened, Duration);
-            ProgressSynced?.Invoke(this, (session.LibraryItemId, current, Duration));
+            ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
         }
         catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
         {
@@ -700,7 +701,7 @@ public sealed partial class PlayerService : ObservableObject
             Log.Info($"Session {session.Id} am Server geschlossen – starte neue Session.");
             try
             {
-                var fresh = await _api.StartPlaybackAsync(session.LibraryItemId, _settings.DeviceId);
+                var fresh = await _api.StartPlaybackAsync(session.LibraryItemId, _settings.DeviceId, session.EpisodeId);
                 if (_session == session)
                 {
                     session.Id = fresh.Id;
@@ -734,6 +735,6 @@ public sealed partial class PlayerService : ObservableObject
         local.TimeListening = Math.Round(local.TimeListening + listened, 1);
         local.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         _localSessions.Upsert(local);
-        ProgressSynced?.Invoke(this, (local.LibraryItemId, current, local.Duration));
+        ProgressSynced?.Invoke(this, (local.LibraryItemId, null, current, local.Duration));
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Lagerfeuer.Models;
@@ -93,6 +94,8 @@ public sealed class ItemsInProgressResponse
 public sealed class SearchResponse
 {
     public List<SearchBookResult> Book { get; set; } = [];
+    /// <summary>Treffer in Podcast-Bibliotheken.</summary>
+    public List<SearchBookResult> Podcast { get; set; } = [];
 }
 
 public sealed class SearchBookResult
@@ -108,8 +111,13 @@ public sealed class LibraryItem
     public long UpdatedAt { get; set; }
     public BookMedia Media { get; set; } = new();
     public MediaProgress? UserMediaProgress { get; set; }
+    /// <summary>Nur in "Weiterhören" bei Podcasts: die angefangene Folge.</summary>
+    public PodcastEpisode? RecentEpisode { get; set; }
+
+    [JsonIgnore] public bool IsPodcast => MediaType == "podcast";
 }
 
+/// <summary>Medien eines Items – Buch oder Podcast (gemeinsame Felder in einer Klasse).</summary>
 public sealed class BookMedia
 {
     public BookMetadata Metadata { get; set; } = new();
@@ -118,6 +126,9 @@ public sealed class BookMedia
     public List<Chapter> Chapters { get; set; } = [];
     /// <summary>Nur im erweiterten Item (expanded=1) befüllt; leer z.B. bei reinen E-Books.</summary>
     public List<AudioFile>? AudioFiles { get; set; }
+    /// <summary>Podcast: Folgen (nur im erweiterten Item; vom Server unsortiert).</summary>
+    public List<PodcastEpisode>? Episodes { get; set; }
+    public int NumEpisodes { get; set; }
 }
 
 public sealed class BookMetadata
@@ -125,17 +136,22 @@ public sealed class BookMetadata
     public string? Title { get; set; }
     public string? Subtitle { get; set; }
     public string? AuthorName { get; set; }
+    /// <summary>Podcast: Autor/Herausgeber.</summary>
+    public string? Author { get; set; }
     public string? NarratorName { get; set; }
     public string? SeriesName { get; set; }
     public string? Description { get; set; }
     public string? PublishedYear { get; set; }
     public List<NamedRef> Authors { get; set; } = [];
     public List<string> Narrators { get; set; } = [];
+    /// <summary>Im erweiterten Item eine Liste, bei Serien-Filtern ein einzelnes Objekt – beides wird gelesen.</summary>
+    [JsonConverter(typeof(SeriesRefListConverter))]
+    public List<SeriesRef> Series { get; set; } = [];
 
     [JsonIgnore]
-    public string DisplayAuthor => !string.IsNullOrWhiteSpace(AuthorName)
-        ? AuthorName!
-        : string.Join(", ", Authors.Select(a => a.Name));
+    public string DisplayAuthor => !string.IsNullOrWhiteSpace(AuthorName) ? AuthorName!
+        : Authors.Count > 0 ? string.Join(", ", Authors.Select(a => a.Name))
+        : Author ?? "";
 
     [JsonIgnore]
     public string DisplayNarrator => !string.IsNullOrWhiteSpace(NarratorName)
@@ -326,4 +342,96 @@ public sealed class LocalSessionResult
     public bool Success { get; set; }
     public bool ProgressSynced { get; set; }
     public string? Error { get; set; }
+}
+
+// ---------- Serien, Autoren, Lesezeichen, Podcasts ----------
+
+public sealed class SeriesRef
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>Band – ein String, z.B. "1", "2.5" oder "1-3".</summary>
+    public string? Sequence { get; set; }
+}
+
+/// <summary>Liest "series" sowohl als Liste als auch als einzelnes Objekt (je nach Endpunkt).</summary>
+public sealed class SeriesRefListConverter : JsonConverter<List<SeriesRef>>
+{
+    /// <summary>Auch bei "series": null aufrufen – sonst wäre die Liste null statt leer.</summary>
+    public override bool HandleNull => true;
+
+    public override List<SeriesRef> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => reader.TokenType switch
+        {
+            JsonTokenType.Null => [],
+            JsonTokenType.StartObject => JsonSerializer.Deserialize<SeriesRef>(ref reader, options) is { } s ? [s] : [],
+            JsonTokenType.StartArray => JsonSerializer.Deserialize<List<SeriesRef>>(ref reader, options) ?? [],
+            _ => throw new JsonException($"Unerwartetes Format für series: {reader.TokenType}"),
+        };
+
+    public override void Write(Utf8JsonWriter writer, List<SeriesRef> value, JsonSerializerOptions options)
+        => JsonSerializer.Serialize(writer, value, options);
+}
+
+public sealed class SeriesListResponse
+{
+    public List<SeriesItem> Results { get; set; } = [];
+    public int Total { get; set; }
+}
+
+public sealed class SeriesItem
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    /// <summary>Bücher der Serie, bereits nach Band sortiert.</summary>
+    public List<LibraryItem> Books { get; set; } = [];
+}
+
+public sealed class AuthorsResponse
+{
+    public List<Author> Authors { get; set; } = [];
+}
+
+public sealed class Author
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public string? ImagePath { get; set; }
+    public int NumBooks { get; set; }
+    public List<LibraryItem> LibraryItems { get; set; } = [];
+    public List<AuthorSeries> Series { get; set; } = [];
+}
+
+public sealed class AuthorSeries
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public List<LibraryItem> Items { get; set; } = [];
+}
+
+public sealed class BookmarksResponse
+{
+    public List<Bookmark> Bookmarks { get; set; } = [];
+}
+
+public sealed class PodcastEpisode
+{
+    public string Id { get; set; } = "";
+    public string LibraryItemId { get; set; } = "";
+    public string? Title { get; set; }
+    public string? Subtitle { get; set; }
+    public string? Description { get; set; }
+    public string? PubDate { get; set; }
+    /// <summary>Veröffentlichung in ms seit 1970 (kann fehlen).</summary>
+    public long? PublishedAt { get; set; }
+    /// <summary>Nur im erweiterten Item.</summary>
+    public double Duration { get; set; }
+    public AudioFile? AudioFile { get; set; }
+
+    [JsonIgnore] public double DisplayDuration => Duration > 0 ? Duration : AudioFile?.Duration ?? 0;
+
+    [JsonIgnore]
+    public DateTimeOffset? Published => PublishedAt is { } ms and > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
 }

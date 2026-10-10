@@ -84,7 +84,7 @@ public partial class App : Application
         UpdateService.CleanupAfterUpdate();
 
         Player = new PlayerService(Api, Cache, Covers, Settings, LocalSessions, Progress, dispatcher);
-        Player.ProgressSynced += (_, p) => Progress.Update(p.ItemId, p.CurrentTime, p.Duration);
+        Player.ProgressSynced += (_, p) => Progress.Update(p.ItemId, p.CurrentTime, p.Duration, p.EpisodeId);
         Player.LocalSessionEnded += (_, _) => { if (!IsOffline) _ = UploadOfflineSessionsAsync(); };
         Player.AttachCallDetector(Calls);
         if (Settings.PauseOnCalls) _ = Calls.StartAsync();

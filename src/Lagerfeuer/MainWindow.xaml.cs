@@ -281,13 +281,13 @@ public sealed partial class MainWindow : Window
 
         foreach (var old in _libraryItems) Nav.MenuItems.Remove(old);
         _libraryItems.Clear();
-        foreach (var lib in libraries.Where(l => l.MediaType == "book"))
+        foreach (var lib in libraries.Where(l => l.MediaType is "book" or "podcast"))
         {
             var item = new NavigationViewItem
             {
                 Content = lib.Name,
                 Tag = lib,
-                Icon = new FontIcon { Glyph = "" },
+                Icon = new FontIcon { Glyph = lib.MediaType == "podcast" ? "\uE720" : "\uE8F1" },
             };
             _libraryItems.Add(item);
             Nav.MenuItems.Add(item);
@@ -338,6 +338,18 @@ public sealed partial class MainWindow : Window
     }
 
     public void OpenItem(string itemId) => ContentFrame.Navigate(typeof(BookPage), itemId);
+
+    /// <summary>Öffnet ein Buch bzw. einen Podcast auf der passenden Seite.</summary>
+    public void OpenItem(Models.LibraryItem item)
+    {
+        if (item.IsPodcast) ContentFrame.Navigate(typeof(PodcastPage), item.Id);
+        else OpenItem(item.Id);
+    }
+
+    public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
+
+    public void OpenSeries(string libraryId, string seriesId, string name)
+        => ContentFrame.Navigate(typeof(SeriesPage), new SeriesPageArgs(libraryId, seriesId, name));
 
     private void OnOpenItemRequested(object? sender, string itemId) => OpenItem(itemId);
 

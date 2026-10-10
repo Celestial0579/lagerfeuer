@@ -47,6 +47,10 @@ public sealed class AppSettings
     public bool AutoCheckUpdates { get; set; } = true;
     public bool PauseOnCalls { get; set; } = true;
     public bool ResumeAfterCalls { get; set; } = true;
+    public string LibrarySort { get; set; } = "media.metadata.title";
+    public bool LibrarySortDescending { get; set; }
+    public string LibraryFilter { get; set; } = "";
+    public bool HideFinishedEpisodes { get; set; }
     public string? SkippedUpdateVersion { get; set; }
 
     public static AppSettings Load()

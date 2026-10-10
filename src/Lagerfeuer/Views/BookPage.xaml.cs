@@ -16,10 +16,12 @@ public sealed partial class BookPage : Page
         InitializeComponent();
         App.Progress.Changed += OnProgressChanged;
         App.Downloads.Changed += OnDownloadChanged;
+        App.BookmarksChanged += OnBookmarksChanged;
         Unloaded += (_, _) =>
         {
             App.Progress.Changed -= OnProgressChanged;
             App.Downloads.Changed -= OnDownloadChanged;
+            App.BookmarksChanged -= OnBookmarksChanged;
         };
     }
 
@@ -54,6 +56,8 @@ public sealed partial class BookPage : Page
             ChapterList.ItemsSource = _item.Media.Chapters;
             ChaptersPanel.Visibility = _item.Media.Chapters.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+            BuildLinks();
+            UpdateBookmarks();
             UpdateProgress();
             UpdateDownloadState();
             ContentRoot.Visibility = Visibility.Visible;
@@ -97,6 +101,72 @@ public sealed partial class BookPage : Page
         PlayButtonText.Text = !hasAudio ? "Keine Audiodateien (E-Book)"
             : !finished && current > 0 ? "Weiterhören" : "Abspielen";
         FinishedButtonText.Text = finished ? "Als nicht beendet markieren" : "Als beendet markieren";
+    }
+
+    // ---------- Autor- und Serien-Links ----------
+
+    private void BuildLinks()
+    {
+        var meta = _item!.Media.Metadata;
+        AuthorLinks.Children.Clear();
+        SeriesLinks.Children.Clear();
+
+        if (meta.Authors.Count > 0)
+        {
+            AuthorText.Visibility = Visibility.Collapsed;
+            foreach (var author in meta.Authors)
+            {
+                var link = new HyperlinkButton { Content = author.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+                link.Click += (_, _) => App.MainWindow.OpenAuthor(author.Id);
+                AuthorLinks.Children.Add(link);
+            }
+        }
+
+        if (meta.Series.Count > 0)
+        {
+            SeriesText.Visibility = Visibility.Collapsed;
+            foreach (var series in meta.Series)
+            {
+                var link = new HyperlinkButton
+                {
+                    Content = string.IsNullOrEmpty(series.Sequence) ? series.Name : $"{series.Name} · Band {series.Sequence}",
+                };
+                link.Click += (_, _) => App.MainWindow.OpenSeries(_item.LibraryId, series.Id, series.Name);
+                SeriesLinks.Children.Add(link);
+            }
+        }
+    }
+
+    // ---------- Lesezeichen ----------
+
+    private void OnBookmarksChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(UpdateBookmarks);
+
+    private void UpdateBookmarks()
+    {
+        if (_item is null) return;
+        var bookmarks = App.User?.Bookmarks.Where(b => b.LibraryItemId == _item.Id).OrderBy(b => b.Time).ToList() ?? [];
+        BookmarkList.ItemsSource = bookmarks;
+        BookmarksPanel.Visibility = bookmarks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnBookmarkClick(object sender, ItemClickEventArgs e)
+    {
+        if (_item is not null && e.ClickedItem is Models.Bookmark bm) _ = App.Player.PlayItemAsync(_item.Id, bm.Time);
+    }
+
+    private async void OnDeleteBookmark(object sender, RoutedEventArgs e)
+    {
+        if (_item is null || ((FrameworkElement)sender).Tag is not Models.Bookmark bm) return;
+        try
+        {
+            await App.Api.DeleteBookmarkAsync(_item.Id, bm.Time);
+            App.User?.Bookmarks.RemoveAll(b => b.LibraryItemId == bm.LibraryItemId && b.Time == bm.Time);
+            App.RaiseBookmarksChanged();
+        }
+        catch (Exception ex)
+        {
+            App.MainWindow.ShowError($"Lesezeichen konnte nicht gelöscht werden: {ex.Message}");
+        }
     }
 
     // ---------- Download ----------

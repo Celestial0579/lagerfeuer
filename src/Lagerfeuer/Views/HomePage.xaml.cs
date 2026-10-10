@@ -29,7 +29,7 @@ public sealed partial class HomePage : Page
             App.Progress.Reset(await App.Api.GetAllProgressAsync());
             var items = await App.Api.GetItemsInProgressAsync();
             _items.Clear();
-            foreach (var item in items.Where(i => i.MediaType == "book")) _items.Add(new BookItemViewModel(item));
+            foreach (var item in items) _items.Add(new BookItemViewModel(item));
             EmptyState.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (Exception ex)
@@ -44,6 +44,6 @@ public sealed partial class HomePage : Page
 
     private void OnItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is BookItemViewModel vm) App.MainWindow.OpenItem(vm.Id);
+        if (e.ClickedItem is BookItemViewModel vm) App.MainWindow.OpenItem(vm.Item);
     }
 }

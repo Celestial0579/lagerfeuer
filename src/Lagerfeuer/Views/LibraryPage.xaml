@@ -10,6 +10,7 @@
     <Grid Padding="32,16,32,0" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -29,9 +30,35 @@
                 TextChanged="OnSearchTextChanged" />
         </Grid>
 
+        <!--  Ansicht, Sortierung, Filter  -->
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <SelectorBar x:Name="ViewSelector" SelectionChanged="OnViewChanged">
+                <SelectorBarItem x:Name="BooksTab" IsSelected="True" Tag="books" Text="Bücher" />
+                <SelectorBarItem x:Name="SeriesTab" Tag="series" Text="Serien" />
+                <SelectorBarItem x:Name="AuthorsTab" Tag="authors" Text="Autoren" />
+            </SelectorBar>
+            <StackPanel
+                x:Name="SortPanel"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <ComboBox x:Name="FilterBox" MinWidth="150" SelectionChanged="OnQueryChanged" ToolTipService.ToolTip="Filter" />
+                <ComboBox x:Name="SortBox" MinWidth="180" SelectionChanged="OnQueryChanged" ToolTipService.ToolTip="Sortierung" />
+                <ToggleButton x:Name="DescToggle" Click="OnQueryChanged" ToolTipService.ToolTip="Absteigend sortieren">
+                    <FontIcon FontSize="14" Glyph="&#xE8CB;" />
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
+
+        <!--  Bücher / Podcasts  -->
         <GridView
-            x:Name="Grid"
-            Grid.Row="1"
+            x:Name="BooksGrid"
+            Grid.Row="2"
             IncrementalLoadingThreshold="3"
             IsItemClickEnabled="True"
             ItemClick="OnItemClick"
@@ -43,13 +70,87 @@
             </GridView.ItemTemplate>
         </GridView>
 
+        <!--  Serien  -->
+        <GridView
+            x:Name="SeriesGrid"
+            Grid.Row="2"
+            IsItemClickEnabled="True"
+            ItemClick="OnSeriesClick"
+            SelectionMode="None"
+            Visibility="Collapsed">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="vm:SeriesViewModel">
+                    <StackPanel Width="160" Padding="0,0,0,8" Spacing="4">
+                        <Grid>
+                            <Border
+                                Width="150"
+                                Height="150"
+                                Margin="10,0,0,10"
+                                Background="{ThemeResource LfSurfaceDeepBrush}"
+                                CornerRadius="6"
+                                Opacity="0.6" />
+                            <controls:CoverImage
+                                Width="150"
+                                Height="150"
+                                Margin="0,10,10,0"
+                                DecodeWidth="150"
+                                ItemId="{x:Bind CoverItemId}" />
+                        </Grid>
+                        <TextBlock
+                            MaxLines="2"
+                            Style="{StaticResource LfBookTitleStyle}"
+                            Text="{x:Bind Name}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Info}" />
+                    </StackPanel>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <!--  Autoren  -->
+        <GridView
+            x:Name="AuthorsGrid"
+            Grid.Row="2"
+            IsItemClickEnabled="True"
+            ItemClick="OnAuthorClick"
+            SelectionMode="None"
+            Visibility="Collapsed">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="vm:AuthorViewModel">
+                    <StackPanel Width="140" Padding="0,0,0,8" Spacing="4">
+                        <controls:CoverImage
+                            Width="140"
+                            Height="140"
+                            AuthorId="{x:Bind Id}"
+                            CornerRadius="70"
+                            DecodeWidth="140" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            MaxLines="2"
+                            Style="{StaticResource LfBookTitleStyle}"
+                            Text="{x:Bind Name}"
+                            TextAlignment="Center"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Info}" />
+                    </StackPanel>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
         <TextBlock
             x:Name="NoResults"
-            Grid.Row="1"
+            Grid.Row="2"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             Text="Keine Treffer."
             Visibility="Collapsed" />
+        <ProgressRing x:Name="LoadingRing" Grid.Row="2" IsActive="False" />
     </Grid>
 </Page>

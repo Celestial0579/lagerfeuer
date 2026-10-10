@@ -215,17 +215,16 @@ public sealed class CacheManager(AbsApiClient api, string root)
     };
 }
 
-/// <summary>Lädt Cover einmalig herunter und hält sie auf der Platte vor.</summary>
+/// <summary>Lädt Cover und Autorenbilder einmalig herunter und hält sie auf der Platte vor.</summary>
 public sealed class CoverCache(AbsApiClient api, string root)
 {
     private readonly ConcurrentDictionary<string, Task<string?>> _inflight = new();
 
     public Task<string?> GetCoverPathAsync(string itemId)
-    {
-        var path = Path.Combine(root, itemId + ".jpg");
-        if (File.Exists(path)) return Task.FromResult<string?>(path);
-        return _inflight.GetOrAdd(itemId, _ => DownloadAsync(itemId, path));
-    }
+        => GetAsync(itemId, () => api.GetCoverAsync(itemId));
+
+    public Task<string?> GetAuthorImagePathAsync(string authorId)
+        => GetAsync("author_" + authorId, () => api.GetAuthorImageAsync(authorId));
 
     /// <summary>Verwirft ein Cover (z.B. wenn es am Server geändert wurde).</summary>
     public void Invalidate(string itemId)
@@ -233,11 +232,18 @@ public sealed class CoverCache(AbsApiClient api, string root)
         try { File.Delete(Path.Combine(root, itemId + ".jpg")); } catch { /* egal */ }
     }
 
-    private async Task<string?> DownloadAsync(string itemId, string path)
+    private Task<string?> GetAsync(string key, Func<Task<byte[]?>> download)
+    {
+        var path = Path.Combine(root, key + ".jpg");
+        if (File.Exists(path)) return Task.FromResult<string?>(path);
+        return _inflight.GetOrAdd(key, _ => DownloadAsync(key, path, download));
+    }
+
+    private async Task<string?> DownloadAsync(string key, string path, Func<Task<byte[]?>> download)
     {
         try
         {
-            var bytes = await api.GetCoverAsync(itemId);
+            var bytes = await download();
             if (bytes is null || bytes.Length == 0) return null;
             Directory.CreateDirectory(root);
             var tmp = path + ".tmp";
@@ -247,12 +253,12 @@ public sealed class CoverCache(AbsApiClient api, string root)
         }
         catch (Exception ex)
         {
-            Log.Error($"Cover {itemId} konnte nicht geladen werden", ex);
+            Log.Error($"Bild {key} konnte nicht geladen werden", ex);
             return null;
         }
         finally
         {
-            _inflight.TryRemove(itemId, out _);
+            _inflight.TryRemove(key, out _);
         }
     }
 }

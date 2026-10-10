@@ -7,18 +7,28 @@ using Windows.Foundation;
 
 namespace Lagerfeuer.ViewModels;
 
+/// <summary>Kachel für ein Buch oder einen Podcast (in "Weiterhören" ggf. mit angefangener Folge).</summary>
 public sealed partial class BookItemViewModel : ObservableObject
 {
-    public BookItemViewModel(LibraryItem item)
+    public BookItemViewModel(LibraryItem item, string? subtitle = null)
     {
         Item = item;
+        _subtitle = subtitle;
         RefreshProgress();
     }
 
+    private readonly string? _subtitle;
+
     public LibraryItem Item { get; }
     public string Id => Item.Id;
-    public string Title => Item.Media.Metadata.Title ?? "(ohne Titel)";
-    public string Author => Item.Media.Metadata.DisplayAuthor;
+    public bool IsPodcast => Item.IsPodcast;
+    public string? EpisodeId => Item.RecentEpisode?.Id;
+
+    public string Title => Item.RecentEpisode?.Title ?? Item.Media.Metadata.Title ?? "(ohne Titel)";
+
+    /// <summary>Autor – bei einer Podcast-Folge der Podcast-Name, in Serien ggf. "Band 3".</summary>
+    public string Author => _subtitle
+        ?? (Item.RecentEpisode is not null ? Item.Media.Metadata.Title ?? "" : Item.Media.Metadata.DisplayAuthor);
 
     [ObservableProperty] public partial double ProgressPercent { get; set; }
     [ObservableProperty] public partial bool HasProgress { get; set; }
@@ -27,16 +37,16 @@ public sealed partial class BookItemViewModel : ObservableObject
 
     public void RefreshProgress()
     {
-        var p = App.Progress.Get(Item.Id) ?? Item.UserMediaProgress;
+        var p = App.Progress.Get(Item.Id, EpisodeId) ?? (EpisodeId is null ? Item.UserMediaProgress : null);
         IsFinished = p?.IsFinished ?? false;
         ProgressPercent = IsFinished ? 100 : (p?.Progress ?? 0) * 100;
         HasProgress = ProgressPercent > 0;
-        IsDownloaded = App.Cache.IsPinned(Item.Id);
+        IsDownloaded = !IsPodcast && App.Cache.IsPinned(Item.Id);
     }
 }
 
 /// <summary>Bibliotheksansicht mit seitenweisem Nachladen (Incremental Loading) für große Bibliotheken.</summary>
-public sealed partial class IncrementalBookCollection(string libraryId, AbsApiClient api)
+public sealed partial class IncrementalBookCollection(string libraryId, AbsApiClient api, LibraryQuery? query = null)
     : ObservableCollection<BookItemViewModel>, ISupportIncrementalLoading
 {
     private const int PageSize = 60;
@@ -59,7 +69,7 @@ public sealed partial class IncrementalBookCollection(string libraryId, AbsApiCl
         _loading = true;
         try
         {
-            var resp = await api.GetLibraryItemsAsync(libraryId, _page, PageSize);
+            var resp = await api.GetLibraryItemsAsync(libraryId, _page, PageSize, query);
             _total = resp.Total;
             _page++;
             foreach (var item in resp.Results) Add(new BookItemViewModel(item));
@@ -78,4 +88,23 @@ public sealed partial class IncrementalBookCollection(string libraryId, AbsApiCl
             _loading = false;
         }
     }
+}
+
+/// <summary>Serie als Kachel (Cover des ersten Bandes).</summary>
+public sealed class SeriesViewModel(SeriesItem series)
+{
+    public SeriesItem Series { get; } = series;
+    public string Id => Series.Id;
+    public string Name => Series.Name;
+    public string CoverItemId => Series.Books.FirstOrDefault()?.Id ?? "";
+    public string Info => Series.Books.Count == 1 ? "1 Buch" : $"{Series.Books.Count} Bücher";
+}
+
+/// <summary>Autor als Kachel.</summary>
+public sealed class AuthorViewModel(Author author)
+{
+    public Author Author { get; } = author;
+    public string Id => Author.Id;
+    public string Name => Author.Name;
+    public string Info => Author.NumBooks == 1 ? "1 Buch" : $"{Author.NumBooks} Bücher";
 }

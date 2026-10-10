@@ -171,7 +171,7 @@ public class AbsApiClientTests
         using var api = new AbsApiClient(handler);
         api.Configure(Server, "access", null);
 
-        var session = await api.StartPlaybackAsync("item1", "device-42", TestContext.Current.CancellationToken);
+        var session = await api.StartPlaybackAsync("item1", "device-42", ct: TestContext.Current.CancellationToken);
 
         Assert.Equal("https://abs.test/api/items/item1/play", Assert.Single(handler.Requests).RequestUri!.ToString());
         using var json = JsonDocument.Parse(body!);
