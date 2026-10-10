@@ -26,7 +26,7 @@ public class CachingHttpStreamTests : IDisposable
 
     private static async Task WaitUntilCompleteAsync(CachingHttpStream stream)
     {
-        for (var i = 0; i < 200 && !stream.IsComplete; i++) await Task.Delay(25);
+        for (var i = 0; i < 200 && !stream.IsComplete; i++) await Task.Delay(25, TestContext.Current.CancellationToken);
         Assert.True(stream.IsComplete, "Datei wurde nicht vollständig gecacht.");
     }
 
@@ -94,7 +94,7 @@ public class CachingHttpStreamTests : IDisposable
         }
 
         // Der erste Stream schreibt seine Map beim Schließen im Hintergrund.
-        for (var i = 0; i < 100 && CachingHttpStream.GetCachedFraction(DataPath) == 0; i++) await Task.Delay(20);
+        for (var i = 0; i < 100 && CachingHttpStream.GetCachedFraction(DataPath) == 0; i++) await Task.Delay(20, TestContext.Current.CancellationToken);
 
         await using var second = await CachingHttpStream.OpenAsync(api, "/api/items/item/file/1", DataPath, TestContext.Current.CancellationToken);
         Assert.True(second.CachedFraction > 0, "Bereits geladene Blöcke wurden nicht übernommen.");
