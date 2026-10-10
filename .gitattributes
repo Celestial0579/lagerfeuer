@@ -6,3 +6,6 @@
 *.ico binary
 *.bmp binary
 *.pfx binary
+
+# NSIS zeigt die Lizenzseite aus dieser Datei an – Windows-Zeilenumbrüche behalten
+installer/*.txt text eol=crlf
