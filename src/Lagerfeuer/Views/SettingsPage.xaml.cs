@@ -17,6 +17,9 @@ public sealed partial class SettingsPage : Page
         _loading = true;
         CacheLimitBox.Value = App.Settings.CacheLimitGb;
         AutoUpdateSwitch.IsOn = App.Settings.AutoCheckUpdates;
+        PauseOnCallsSwitch.IsOn = App.Settings.PauseOnCalls;
+        ResumeAfterCallsBox.IsChecked = App.Settings.ResumeAfterCalls;
+        ResumeAfterCallsBox.IsEnabled = App.Settings.PauseOnCalls;
         _loading = false;
 
         AccountText.Text = $"{App.Settings.Username} auf {App.Settings.ServerUrl}";
@@ -44,6 +47,26 @@ public sealed partial class SettingsPage : Page
         var protectedIds = App.Player.ItemId is { } id ? new[] { id } : [];
         await Task.Run(() => App.Cache.Clear(protectedIds));
         await UpdateCacheSizeAsync();
+    }
+
+    private async void OnPauseOnCallsToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.PauseOnCalls = PauseOnCallsSwitch.IsOn;
+        App.Settings.Save();
+        ResumeAfterCallsBox.IsEnabled = PauseOnCallsSwitch.IsOn;
+        if (PauseOnCallsSwitch.IsOn)
+        {
+            if (!await App.Calls.StartAsync())
+                App.MainWindow.ShowError("Die Anruferkennung konnte nicht gestartet werden (Details im Log).");
+        }
+        else App.Calls.Stop();
+    }
+
+    private void OnResumeAfterCallsClicked(object sender, RoutedEventArgs e)
+    {
+        App.Settings.ResumeAfterCalls = ResumeAfterCallsBox.IsChecked == true;
+        App.Settings.Save();
     }
 
     private void OnAutoUpdateToggled(object sender, RoutedEventArgs e)

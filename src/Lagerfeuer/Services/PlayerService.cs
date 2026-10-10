@@ -234,16 +234,47 @@ public sealed partial class PlayerService : ObservableObject
 
     public void Play()
     {
-        if (_session is null) return;
-        _player.Play();
+        _calls?.OnUserAction();
+        PlayCore();
     }
 
-    public void Pause() => _player.Pause();
+    public void Pause()
+    {
+        _calls?.OnUserAction();
+        _player.Pause();
+    }
 
     public void TogglePlayPause()
     {
         if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing) Pause();
         else Play();
+    }
+
+    private void PlayCore()
+    {
+        if (_session is null) return;
+        _player.Play();
+    }
+
+    // ---------- Anrufe ----------
+
+    private CallPauseController? _calls;
+
+    /// <summary>Verbindet die Anruferkennung: bei Anrufen pausieren, danach optional fortsetzen.</summary>
+    public void AttachCallDetector(CallDetector detector)
+    {
+        _calls = new CallPauseController(
+            isPlaying: () => _player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing,
+            pause: () => _player.Pause(),
+            play: PlayCore,
+            autoPause: () => _settings.PauseOnCalls,
+            autoResume: () => _settings.ResumeAfterCalls);
+        detector.CallStarted += (_, _) => _dq.TryEnqueue(() =>
+        {
+            _calls.OnCallStarted();
+            if (_calls.PausedByCall) Log.Info("Anruf erkannt – Wiedergabe pausiert.");
+        });
+        detector.CallEnded += (_, _) => _dq.TryEnqueue(() => _calls.OnCallEnded());
     }
 
     public Task SkipAsync(double seconds) => SeekAsync(CurrentBookTime() + seconds);

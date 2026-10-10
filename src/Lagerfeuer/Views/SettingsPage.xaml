@@ -31,6 +31,20 @@
                 <Button Click="OnOpenFolder" Content="Ordner öffnen" />
             </StackPanel>
 
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Anrufe" />
+            <ToggleSwitch
+                x:Name="PauseOnCallsSwitch"
+                Header="Bei Anrufen automatisch pausieren"
+                OffContent="Aus"
+                OnContent="An"
+                Toggled="OnPauseOnCallsToggled" />
+            <CheckBox x:Name="ResumeAfterCallsBox" Click="OnResumeAfterCallsClicked" Content="Nach dem Anruf automatisch weiterhören" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Erkennt Anrufe in Teams, Zoom, Telefon-Link und anderen Apps, die Windows als Kommunikation melden. Voraussetzung: In den Windows-Soundeinstellungen (Systemsteuerung → Sound → Kommunikation) ist nicht „Nichts unternehmen“ ausgewählt."
+                TextWrapping="Wrap" />
+
             <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates" />
             <ToggleSwitch
                 x:Name="AutoUpdateSwitch"

@@ -14,6 +14,7 @@ public partial class App : Application
     public static ProgressStore Progress { get; } = new(Path.Combine(AppPaths.Root, "progress.json"));
     public static LocalSessionStore LocalSessions { get; } = new(Path.Combine(AppPaths.Root, "offline-sessions.json"));
     public static DownloadManager Downloads { get; } = new(Api, Cache, Covers);
+    public static CallDetector Calls { get; } = new();
 
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
     public static bool IsOffline { get; set; }
@@ -79,6 +80,8 @@ public partial class App : Application
         Player = new PlayerService(Api, Cache, Covers, Settings, LocalSessions, Progress, dispatcher);
         Player.ProgressSynced += (_, p) => Progress.Update(p.ItemId, p.CurrentTime, p.Duration);
         Player.LocalSessionEnded += (_, _) => { if (!IsOffline) _ = UploadOfflineSessionsAsync(); };
+        Player.AttachCallDetector(Calls);
+        if (Settings.PauseOnCalls) _ = Calls.StartAsync();
         MainWindow = new MainWindow();
         MainWindow.Activate();
     }

@@ -45,6 +45,8 @@ public sealed class AppSettings
     public double Volume { get; set; } = 1.0;
     public int CacheLimitGb { get; set; } = 10;
     public bool AutoCheckUpdates { get; set; } = true;
+    public bool PauseOnCalls { get; set; } = true;
+    public bool ResumeAfterCalls { get; set; } = true;
     public string? SkippedUpdateVersion { get; set; }
 
     public static AppSettings Load()
