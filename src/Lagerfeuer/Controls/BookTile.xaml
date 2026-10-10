@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Lagerfeuer.Controls.BookTile"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Lagerfeuer.Controls">
+
+    <StackPanel Width="160" Spacing="4" Padding="0,0,0,8">
+        <Grid>
+            <controls:CoverImage Width="160" Height="160" DecodeWidth="160" ItemId="{x:Bind Item.Id, Mode=OneWay}" />
+            <Border
+                Margin="6"
+                Padding="4,1"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                CornerRadius="4"
+                Visibility="{x:Bind Item.IsFinished, Mode=OneWay}">
+                <FontIcon FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Glyph="&#xE73E;" />
+            </Border>
+        </Grid>
+        <ProgressBar
+            Maximum="100"
+            Value="{x:Bind Item.ProgressPercent, Mode=OneWay}"
+            Visibility="{x:Bind Item.HasProgress, Mode=OneWay}" />
+        <TextBlock
+            MaxLines="2"
+            Style="{StaticResource LfBookTitleStyle}"
+            Text="{x:Bind Item.Title, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="Wrap"
+            ToolTipService.ToolTip="{x:Bind Item.Title, Mode=OneWay}" />
+        <TextBlock
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="{x:Bind Item.Author, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis" />
+    </StackPanel>
+</UserControl>

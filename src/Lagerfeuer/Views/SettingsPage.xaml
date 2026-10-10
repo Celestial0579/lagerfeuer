@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Lagerfeuer.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="760" Padding="32,16,32,32" HorizontalAlignment="Left" Spacing="16">
+            <TextBlock Style="{StaticResource LfTitleStyle}" Text="Einstellungen" />
+
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Konto" />
+            <TextBlock x:Name="AccountText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Audio-Cache" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Hörbücher werden beim Streamen auf der Festplatte zwischengespeichert. Bereits geladene Teile werden nicht erneut übertragen. Ist das Limit erreicht, werden die am längsten nicht gehörten Bücher entfernt."
+                TextWrapping="Wrap" />
+            <NumberBox
+                x:Name="CacheLimitBox"
+                Width="220"
+                HorizontalAlignment="Left"
+                Header="Maximale Cache-Größe (GB)"
+                Maximum="2000"
+                Minimum="1"
+                SpinButtonPlacementMode="Inline"
+                ValueChanged="OnCacheLimitChanged" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock x:Name="CacheSizeText" VerticalAlignment="Center" />
+                <Button Click="OnClearCache" Content="Cache leeren" />
+                <Button Click="OnOpenFolder" Content="Ordner öffnen" />
+            </StackPanel>
+
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates" />
+            <ToggleSwitch
+                x:Name="AutoUpdateSwitch"
+                Header="Automatisch nach Updates suchen"
+                OffContent="Aus"
+                OnContent="An"
+                Toggled="OnAutoUpdateToggled" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="CheckUpdateButton" Click="OnCheckUpdates" Content="Jetzt nach Updates suchen" />
+                <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Info" />
+            <TextBlock x:Name="InfoText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Lagerfeuer.Views.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Lagerfeuer.Controls"
+    xmlns:vm="using:Lagerfeuer.ViewModels">
+
+    <Grid Padding="32,16,32,0" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <TextBlock Style="{StaticResource LfTitleStyle}" Text="Weiterhören" />
+            <Button HorizontalAlignment="Right" Click="OnRefresh" ToolTipService.ToolTip="Aktualisieren">
+                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+            </Button>
+        </Grid>
+
+        <GridView
+            x:Name="Grid"
+            Grid.Row="1"
+            IsItemClickEnabled="True"
+            ItemClick="OnItemClick"
+            SelectionMode="None">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="vm:BookItemViewModel">
+                    <controls:BookTile Item="{x:Bind}" />
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <StackPanel
+            x:Name="EmptyState"
+            Grid.Row="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="Collapsed">
+            <FontIcon FontSize="48" Glyph="&#xE8D6;" Opacity="0.5" />
+            <TextBlock HorizontalAlignment="Center" Text="Noch nichts angefangen." />
+            <TextBlock
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Wähle links eine Bibliothek und starte ein Hörbuch." />
+        </StackPanel>
+
+        <ProgressRing x:Name="LoadingRing" Grid.Row="1" IsActive="False" />
+    </Grid>
+</Page>
