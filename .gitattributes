@@ -1,0 +1,8 @@
+# Text einheitlich mit LF (Repository und Arbeitsverzeichnis) – keine CRLF-Warnungen unter Windows
+* text=auto eol=lf
+
+# Binärdateien nie verändern
+*.png binary
+*.ico binary
+*.bmp binary
+*.pfx binary

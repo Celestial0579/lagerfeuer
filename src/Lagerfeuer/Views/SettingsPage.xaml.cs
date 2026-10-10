@@ -162,6 +162,16 @@ public sealed partial class SettingsPage : Page
         CheckUpdateButton.IsEnabled = true;
     }
 
+    private void OnOpenLog(object sender, RoutedEventArgs e)
+    {
+        if (!File.Exists(AppPaths.LogFile))
+        {
+            App.MainWindow.ShowInfo("Das Log ist leer – bisher wurde nichts protokolliert.");
+            return;
+        }
+        Process.Start(new ProcessStartInfo(AppPaths.LogFile) { UseShellExecute = true });
+    }
+
     private void OnOpenFolder(object sender, RoutedEventArgs e)
     {
         Directory.CreateDirectory(AppPaths.Cache);

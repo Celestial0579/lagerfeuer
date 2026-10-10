@@ -71,6 +71,10 @@
 
             <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Info" />
             <TextBlock x:Name="InfoText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Click="OnOpenLog" Content="Log öffnen" ToolTipService.ToolTip="Für Fehlerberichte: Protokoll der App anzeigen" />
+                <HyperlinkButton Content="Fehler melden" NavigateUri="https://github.com/Celestial0579/lagerfeuer/issues/new/choose" />
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

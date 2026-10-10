@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/Celestial0579/lagerfeuer/blob/main/SECURITY.md
+    about: Bitte nicht öffentlich als Issue melden.
+  - name: Frage zu Audiobookshelf selbst
+    url: https://github.com/advplyr/audiobookshelf/discussions
+    about: Fragen zum Server gehören ins Audiobookshelf-Projekt.

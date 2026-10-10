@@ -1,0 +1,66 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! Bitte prüfe vorher, ob es den Fehler schon als [Issue](https://github.com/Celestial0579/lagerfeuer/issues) gibt.
+        **Bitte keine Zugangsdaten, Tokens oder privaten Server-Adressen posten.**
+  - type: input
+    id: version
+    attributes:
+      label: Lagerfeuer-Version
+      description: Steht unter Einstellungen → Info.
+      placeholder: z.B. 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: variant
+    attributes:
+      label: Variante
+      options:
+        - Installiert (Setup)
+        - Portable EXE
+        - Selbst gebaut
+    validations:
+      required: true
+  - type: input
+    id: abs-version
+    attributes:
+      label: Audiobookshelf-Server-Version
+      description: Wird beim Anmelden unter der Server-Adresse angezeigt.
+      placeholder: z.B. 2.37.1
+    validations:
+      required: true
+  - type: dropdown
+    id: login
+    attributes:
+      label: Anmeldung
+      options:
+        - Benutzername/Passwort
+        - SSO (OpenID Connect)
+  - type: input
+    id: windows
+    attributes:
+      label: Windows-Version
+      placeholder: z.B. Windows 11 24H2, x64
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Was ist passiert?
+      description: Was hast du gemacht, was hast du erwartet, was ist stattdessen passiert?
+      placeholder: |
+        1. Buch geöffnet
+        2. Auf „Herunterladen“ geklickt
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log-Auszug
+      description: |
+        Einstellungen → „Log öffnen“ (bzw. `%LOCALAPPDATA%\Lagerfeuer\log.txt`). Bitte nur die relevanten Zeilen
+        und vorher Server-Adressen oder Namen entfernen, die du nicht teilen möchtest.
+      render: text
