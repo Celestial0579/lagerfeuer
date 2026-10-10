@@ -56,6 +56,12 @@ VIAddVersionKey /LANG=1031 "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=1031 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1031 "LegalCopyright" "GPL-3.0"
 
+; Optional signieren (von build/publish.ps1 gesetzt): Setup und eingebetteten Deinstaller
+!ifdef SIGNCMD
+  !finalize '${SIGNCMD}'
+  !uninstfinalize '${SIGNCMD}'
+!endif
+
 !include MUI2.nsh
 !include LogicLib.nsh
 !include x64.nsh

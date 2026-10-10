@@ -26,7 +26,7 @@ Unter [Releases](https://github.com/Celestial0579/lagerfeuer/releases) gibt es p
 
 Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
 
-> Die Dateien sind nicht signiert. Windows SmartScreen warnt deshalb beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“).
+> Solange kein Code-Signing-Zertifikat eingebunden ist, sind die Dateien nicht signiert. Windows SmartScreen warnt dann beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“).
 
 ## Funktionen
 
@@ -34,24 +34,39 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - mit Benutzername und Passwort, oder
   - per **SSO** (OpenID Connect, z.B. Authentik) im **Standardbrowser**. Eine bestehende Sitzung beim Identity Provider wird mitgenutzt.
   - JWT-Access-Token plus rotierendes Refresh-Token, die bei Ablauf automatisch erneuert werden. Die Tokens liegen DPAPI-verschlüsselt im Benutzerprofil.
+  - Angemeldete Geräte einsehen und einzeln abmelden, „Auf allen Geräten abmelden“.
 - **Bibliothek**
-  - „Weiterhören“ über alle Bibliotheken hinweg, Buchbibliotheken mit Nachladen beim Scrollen, Suche.
-  - Detailseite mit Beschreibung, Kapiteln und Fortschritt, „Als beendet markieren“.
-- **Streaming-Wiedergabe**
-  - Bücher mit mehreren Dateien, Kapitelnavigation, Geschwindigkeit von 0,75× bis 3×, Sleep-Timer (Minuten oder Kapitelende), Lautstärke.
+  - „Weiterhören“ über alle Bibliotheken hinweg, inklusive angefangener Podcast-Folgen.
+  - Bücher, **Serien** und **Autoren** mit eigenen Seiten. Serien erscheinen in Lesereihenfolge, Autoren mit Bild, Beschreibung und Serien.
+  - **Sortierung** nach Titel, Autor, hinzugefügt, Erscheinungsjahr, Dauer oder zuletzt gehört.
+  - **Filter** nach Fortschritt: nicht begonnen, angefangen, nicht beendet, beendet.
+  - Suche, Nachladen beim Scrollen.
+  - Buchseite mit Beschreibung, Kapiteln, Fortschritt, **Lesezeichen**, Links zu Autor und Serie, „Als beendet markieren“.
+- **Podcasts**
+  - Podcast-Bibliotheken, Podcast-Seite mit allen Folgen (neueste zuerst, gehörte ausblendbar).
+  - Wiedergabe und Fortschritt pro Folge.
+- **Wiedergabe**
+  - Streaming von Büchern mit mehreren Dateien, Kapitelnavigation, Geschwindigkeit von 0,75× bis 3×, Sleep-Timer (Minuten oder Kapitelende), Lautstärke.
+  - **Lesezeichen** mit einem Klick an der aktuellen Stelle.
   - Tastatur: Leertaste, ← (10 s zurück), → (30 s vor).
   - Windows-Mediensteuerung und Medientasten mit Cover. Weiter/Zurück springt kapitelweise.
+  - **Taskleisten-Miniplayer:** fünf Steuerknöpfe im Vorschaubild, Hörfortschritt im Taskleisten-Symbol.
+  - **Mini-Player-Fenster**, immer im Vordergrund.
+  - **Automatisches Pausieren bei Anrufen** (Teams, Zoom, Telefon-Link …), danach optional automatisch fortsetzen.
 - **Caching beim Streaming**
   - Audiodaten werden beim Abspielen blockweise per HTTP-Range auf die Platte geschrieben.
   - Springen lädt gezielt ab der neuen Stelle nach, der Rest wird im Hintergrund vorgeladen, ebenso der nächste Track.
-  - Vollständig geladene Dateien werden direkt von der Platte gespielt.
-  - Das Cache-Limit ist einstellbar; bei Überschreitung werden die am längsten nicht gehörten Bücher entfernt.
+  - Das Cache-Limit ist einstellbar; die am längsten nicht gehörten Bücher werden zuerst entfernt.
+- **Offline**
+  - Bücher **herunterladen**. Sie sind dann angeheftet, und die Cache-Bereinigung lässt sie in Ruhe.
+  - Seite **Downloads**.
+  - Die Admin-Berechtigung „Download“ wird respektiert.
+  - **Wiedergabe ohne Server:** Offline gehörte Zeit wird gespeichert und beim nächsten Online-Gang hochgeladen (`/api/session/local-all`).
+  - **Start ohne Verbindung:** Downloads bleiben nutzbar, die Verbindung wird automatisch wiederhergestellt.
 - **Fortschritts-Sync**
-  - Playback-Sessions mit Sync alle 15 s und bei Pause, Abschluss beim Beenden.
-  - Gehörte Zeit geht bei Netzfehlern nicht verloren.
-  - Schließt der Server die Session, wird automatisch eine neue gestartet.
+  - Playback-Sessions mit Sync alle 15 s und bei Pause, Abschluss beim Beenden. Gehörte Zeit geht bei Netzfehlern nicht verloren.
+  - **Live-Sync** per Socket.IO: Fortschritt von anderen Geräten erscheint sofort. Ist dasselbe Buch hier pausiert, springt die Wiedergabe an die neue Stelle.
 - **Updates** direkt aus den GitHub-Releases dieses Repositorys.
-
 Das Farbschema (Glut, Funke, Stahl) ist an [firestrike.de](https://firestrike.de) angelehnt und funktioniert im hellen wie im dunklen Windows-Design.
 
 ## SSO mit Authentik einrichten
@@ -131,35 +146,33 @@ Auf GitHub laufen die Tests bei jedem Push und Pull Request ([`ci.yml`](.github/
 ```
 src/Lagerfeuer.Core/    UI-unabhängige Logik (getestet)
   Services/   AbsApiClient (REST + Token-Refresh), OpenIdLogin (SSO), CachingHttpStream (Streaming-Cache),
-              CacheManager/CoverCache, UpdateService (GitHub-Releases), SingleInstance/ProtocolRegistration,
-              AppSettings/CredentialStore/Log, Format
+              CacheManager/CoverCache, DownloadManager, LocalSessionStore, ProgressStore (Offline),
+              LiveSyncClient (Socket.IO), CallDetector (Anrufe), UpdateService (GitHub-Releases),
+              LibraryQuery, SingleInstance/ProtocolRegistration, AppSettings/CredentialStore/Log, Format
   Models/     DTOs der Audiobookshelf-API
 src/Lagerfeuer/         WinUI-3-App
-  Services/   PlayerService (Wiedergabe, Sync, SMTC)
-  Views/      Login, Weiterhören, Bibliothek, Buch, Einstellungen
+  Services/   PlayerService (Wiedergabe, Sync, SMTC, Offline-Sessions), TaskbarIntegration
+  Views/      Login, Weiterhören, Bibliothek, Serie, Autor, Podcast, Buch, Downloads, Einstellungen, Mini-Player
   Controls/   PlayerBar, BookTile, CoverImage
 tests/Lagerfeuer.Tests/ xUnit-v3-Tests
-installer/              NSIS-Skript
-build/                  publish.ps1 (portable EXE + Installer)
+installer/              NSIS-Skript und Grafiken
+build/                  publish.ps1 (EXE, Installer, Signieren), make-art.ps1 (Grafiken), New-WingetManifest.ps1
 ```
 
 ## Roadmap
 
-### v2 – Offline-Wiedergabe
-Der Cache ist dafür vorbereitet: ein Ordner pro Buch, darin die Audiodateien mit `.map` sowie `session.json` mit Tracks und Kapiteln.
-- Bücher gezielt herunterladen („anheften“); angeheftete Bücher nimmt die Cache-Bereinigung aus.
-- Offline-Bibliothek aus den lokalen `session.json`-Dateien.
-- Lokale Sessions offline aufzeichnen und beim nächsten Online-Gang mit `POST /api/session/local-all` hochladen.
-- Start ohne Server-Verbindung mit gespeicherten Tokens.
+Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung.
 
-### Später
-- **Taskleisten-Miniplayer**: Thumbnail-Toolbar-Buttons, Fortschritt im Taskleisten-Symbol, optional ein kompaktes „Immer im Vordergrund“-Fenster.
-- **Automatisches Pausieren bei Anrufen** über WASAPI-Ducking-Benachrichtigungen (`IAudioVolumeDuckNotification`).
-- Live-Sync per Socket.io (`user_item_progress_updated`).
-- Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts.
-- Abmelden auf allen Geräten, Sitzungsverwaltung.
-- Code-Signing, winget-Paket.
+Vorbereitet, braucht noch eine Entscheidung bzw. ein Zertifikat:
+- **Code-Signing:** `build/publish.ps1` signiert App, portable EXE, Setup und Deinstaller, sobald ein Zertifikat angegeben ist. Das geht per `-CertificateThumbprint` oder `-CertificatePath`. In GitHub Actions hinterlegst du dafür die Secrets `SIGNING_CERT_PFX_BASE64` und `SIGNING_CERT_PASSWORD`.
+- **winget:**
+  - `build/New-WingetManifest.ps1 -Version x.y.z` erzeugt geprüfte Manifeste (`Celestial0579.Lagerfeuer`). Der Release-Workflow legt sie bei jedem Release als Artefakt ab.
+  - Fehlt noch: die Einreichung als Pull Request bei [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
 
+Ideen für später:
+- Podcast-Folgen herunterladen (offline zunächst nur Bücher).
+- Lesezeichen umbenennen, Sammlungen und Playlists.
+- Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
 
 [GPL-3.0](LICENSE) – wie Audiobookshelf selbst. Lagerfeuer ist ein unabhängiges Projekt und steht in keiner Verbindung zum Audiobookshelf-Projekt.
