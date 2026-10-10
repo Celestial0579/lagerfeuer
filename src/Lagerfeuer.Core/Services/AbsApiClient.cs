@@ -145,20 +145,25 @@ public sealed class AbsApiClient : IDisposable
     public Task<LoginResponse> AuthorizeAsync(CancellationToken ct = default)
         => SendJsonAsync<LoginResponse>(HttpMethod.Post, "api/authorize", null, ct);
 
-    public async Task LogoutAsync()
+    /// <summary>
+    /// Meldet ab und widerruft den Refresh-Token. Mit <paramref name="allDevices"/> werden alle
+    /// Sitzungen des Benutzers beendet (andere Geräte müssen sich neu anmelden).
+    /// </summary>
+    public async Task LogoutAsync(bool allDevices = false)
     {
         try
         {
             if (ServerUri is not null && RefreshToken is not null)
             {
                 using var cts = WithTimeout(default);
-                using var req = new HttpRequestMessage(HttpMethod.Post, Resolve("logout"));
+                using var req = new HttpRequestMessage(HttpMethod.Post, Resolve(allDevices ? "logout?allDevices=1" : "logout"));
                 req.Headers.Add("x-refresh-token", RefreshToken);
                 if (AccessToken is not null) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AccessToken);
-                using var _ = await _http.SendAsync(req, cts.Token);
+                using var resp = await _http.SendAsync(req, cts.Token);
+                if (allDevices) await EnsureSuccessAsync(resp);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!allDevices)
         {
             Log.Error("Logout am Server fehlgeschlagen", ex);
         }
@@ -167,6 +172,24 @@ public sealed class AbsApiClient : IDisposable
             ClearAuth();
         }
     }
+
+    /// <summary>Angemeldete Geräte; der Refresh-Token wird mitgeschickt, damit der Server diese App als "current" markiert.</summary>
+    public async Task<List<AuthSession>> GetAuthSessionsAsync(CancellationToken ct = default)
+    {
+        using var cts = WithTimeout(ct);
+        using var resp = await SendAsync(() =>
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, Resolve("api/me/sessions?page=0&itemsPerPage=100"));
+            if (RefreshToken is not null) req.Headers.Add("x-refresh-token", RefreshToken);
+            return req;
+        }, HttpCompletionOption.ResponseContentRead, cts.Token);
+        await EnsureSuccessAsync(resp);
+        return (await resp.Content.ReadFromJsonAsync<AuthSessionsResponse>(Json, cts.Token))?.Sessions ?? [];
+    }
+
+    /// <summary>Beendet die Sitzung eines anderen Geräts (dessen Access-Token gilt noch bis zum Ablauf).</summary>
+    public Task DeleteAuthSessionAsync(string sessionId, CancellationToken ct = default)
+        => SendNoContentAsync(HttpMethod.Delete, $"api/me/sessions/{sessionId}", null, ct);
 
     // ---------- Bibliothek ----------
 

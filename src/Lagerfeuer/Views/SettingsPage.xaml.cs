@@ -26,6 +26,84 @@ public sealed partial class SettingsPage : Page
         InfoText.Text = $"Lagerfeuer {UpdateService.CurrentVersion.ToString(3)} ({(UpdateService.IsPortable ? "portabel" : "installiert")}) · " +
                         $"{UpdateService.RepositoryUrl} · Lizenz: GPL-3.0 · Daten: {AppPaths.Root}";
         _ = UpdateCacheSizeAsync();
+        if (!App.IsOffline) _ = LoadSessionsAsync();
+    }
+
+    // ---------- Angemeldete Geräte ----------
+
+    private async Task LoadSessionsAsync()
+    {
+        try
+        {
+            var sessions = await App.Api.GetAuthSessionsAsync();
+            SessionList.Items.Clear();
+            foreach (var s in sessions.OrderByDescending(s => s.Current).ThenByDescending(s => s.UpdatedAt))
+                SessionList.Items.Add(CreateSessionRow(s));
+            if (sessions.Count == 0) SessionList.Items.Add(new TextBlock { Text = "Keine Sitzungen gefunden." });
+        }
+        catch (Exception ex)
+        {
+            SessionList.Items.Clear();
+            SessionList.Items.Add(new TextBlock { Text = $"Geräte konnten nicht geladen werden: {ex.Message}", TextWrapping = TextWrapping.Wrap });
+        }
+    }
+
+    private FrameworkElement CreateSessionRow(Models.AuthSession session)
+    {
+        var lastActive = DateTimeOffset.FromUnixTimeMilliseconds(session.UpdatedAt).ToLocalTime();
+        var info = new StackPanel { Spacing = 2 };
+        info.Children.Add(new TextBlock
+        {
+            Text = session.DisplayName + (session.Current ? " (dieses Gerät)" : ""),
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = $"Zuletzt aktiv {lastActive:dd.MM.yyyy HH:mm}" + (string.IsNullOrEmpty(session.IpAddress) ? "" : $" · {session.IpAddress}"),
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        });
+
+        var row = new Grid { Padding = new Thickness(0, 6, 0, 6), ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(info);
+        if (!session.Current)
+        {
+            var button = new Button { Content = "Abmelden", VerticalAlignment = VerticalAlignment.Center };
+            button.Click += async (_, _) =>
+            {
+                try
+                {
+                    await App.Api.DeleteAuthSessionAsync(session.Id);
+                    await LoadSessionsAsync();
+                }
+                catch (Exception ex)
+                {
+                    App.MainWindow.ShowError($"Gerät konnte nicht abgemeldet werden: {ex.Message}");
+                }
+            };
+            Grid.SetColumn(button, 1);
+            row.Children.Add(button);
+        }
+        return row;
+    }
+
+    private void OnRefreshSessions(object sender, RoutedEventArgs e) => _ = LoadSessionsAsync();
+
+    private async void OnLogoutAllDevices(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Auf allen Geräten abmelden?",
+            Content = "Alle Geräte und Browser – auch dieses – werden abgemeldet und müssen sich neu anmelden.",
+            PrimaryButtonText = "Überall abmelden",
+            CloseButtonText = "Abbrechen",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        await App.MainWindow.LogoutAsync(allDevices: true);
     }
 
     private async Task UpdateCacheSizeAsync()

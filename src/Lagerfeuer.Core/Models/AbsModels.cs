@@ -435,3 +435,46 @@ public sealed class PodcastEpisode
     [JsonIgnore]
     public DateTimeOffset? Published => PublishedAt is { } ms and > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
 }
+
+/// <summary>Angemeldetes Gerät (Refresh-Token-Sitzung) aus GET /api/me/sessions.</summary>
+public sealed class AuthSession
+{
+    public string Id { get; set; } = "";
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+    public AuthDeviceInfo? DeviceInfo { get; set; }
+    public long CreatedAt { get; set; }
+    public long UpdatedAt { get; set; }
+    /// <summary>Diese App (nur gesetzt, wenn der Refresh-Token mitgeschickt wurde).</summary>
+    public bool Current { get; set; }
+
+    [JsonIgnore]
+    public string DisplayName
+    {
+        get
+        {
+            var d = DeviceInfo;
+            var parts = new[] { d?.BrowserName, d?.OsName is null ? null : $"{d.OsName} {d.OsVersion}".Trim(), d?.Model }
+                .Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+            if (parts.Count > 0) return string.Join(" · ", parts);
+            return string.IsNullOrWhiteSpace(UserAgent) ? "Unbekanntes Gerät" : UserAgent!;
+        }
+    }
+}
+
+public sealed class AuthDeviceInfo
+{
+    public string? BrowserName { get; set; }
+    public string? BrowserVersion { get; set; }
+    public string? OsName { get; set; }
+    public string? OsVersion { get; set; }
+    public string? DeviceType { get; set; }
+    public string? Model { get; set; }
+    public string? Vendor { get; set; }
+}
+
+public sealed class AuthSessionsResponse
+{
+    public int Total { get; set; }
+    public List<AuthSession> Sessions { get; set; } = [];
+}

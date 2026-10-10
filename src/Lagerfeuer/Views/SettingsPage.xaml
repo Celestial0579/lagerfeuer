@@ -11,6 +11,18 @@
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Konto" />
             <TextBlock x:Name="AccountText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
 
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Angemeldete Geräte" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Geräte und Browser, die mit deinem Konto angemeldet sind. Abgemeldete Geräte müssen sich neu anmelden (spätestens nach einer Stunde)."
+                TextWrapping="Wrap" />
+            <ListView x:Name="SessionList" SelectionMode="None" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Click="OnRefreshSessions" Content="Aktualisieren" />
+                <Button Click="OnLogoutAllDevices" Content="Auf allen Geräten abmelden" />
+            </StackPanel>
+
             <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Audio-Cache" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"

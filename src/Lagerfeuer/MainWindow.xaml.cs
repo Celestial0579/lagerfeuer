@@ -303,12 +303,20 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
     }
 
-    private async Task LogoutAsync()
+    public async Task LogoutAsync(bool allDevices = false)
     {
         await Player.StopAsync();
-        await App.Api.LogoutAsync();
+        try
+        {
+            await App.Api.LogoutAsync(allDevices);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Abmelden auf allen Geräten fehlgeschlagen: {ex.Message}");
+        }
         CredentialStore.Clear();
-        ShowLogin(null);
+        App.User = null;
+        ShowLogin(allDevices ? "Du wurdest auf allen Geräten abgemeldet." : null);
     }
 
     // ---------- Navigation ----------
