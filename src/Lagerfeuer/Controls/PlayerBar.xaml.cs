@@ -71,6 +71,7 @@ public sealed partial class PlayerBar : UserControl
     private void OnPreviousChapter(object sender, RoutedEventArgs e) => Player.PreviousChapter();
     private void OnNextChapter(object sender, RoutedEventArgs e) => Player.NextChapter();
     private void OnStop(object sender, RoutedEventArgs e) => _ = Player.StopAsync();
+    private void OnMiniPlayer(object sender, RoutedEventArgs e) => App.MainWindow.ShowMiniPlayer();
 
     private void OnOpenItem(object sender, RoutedEventArgs e)
     {

@@ -17,6 +17,11 @@ public partial class App : Application
 
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
     public static bool IsOffline { get; set; }
+
+    /// <summary>Der angemeldete Benutzer (nach Login/Autorisierung).</summary>
+    public static AbsUser? User { get; set; }
+
+    public static bool CanDownload => User?.Permissions?.Download ?? true;
     public static PlayerService Player { get; private set; } = null!;
     public static MainWindow MainWindow { get; private set; } = null!;
 

@@ -36,6 +36,23 @@ public sealed class AbsUser
     public string? AccessToken { get; set; }
     public string? RefreshToken { get; set; }
     public List<MediaProgress> MediaProgress { get; set; } = [];
+    public List<Bookmark> Bookmarks { get; set; } = [];
+    public UserPermissions? Permissions { get; set; }
+}
+
+public sealed class UserPermissions
+{
+    /// <summary>Darf Dateien herunterladen (Admin-Einstellung) – gilt auch für Offline-Downloads.</summary>
+    public bool Download { get; set; } = true;
+}
+
+/// <summary>Lesezeichen: identifiziert über (libraryItemId, time) – es gibt keine eigene Id.</summary>
+public sealed class Bookmark
+{
+    public string LibraryItemId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public double Time { get; set; }
+    public long CreatedAt { get; set; }
 }
 
 public sealed class MediaProgress

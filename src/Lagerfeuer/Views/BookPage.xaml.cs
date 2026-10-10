@@ -111,7 +111,13 @@ public sealed partial class BookPage : Page
         if (_item is null) return;
         var hasAudio = _item.Media.AudioFiles is not { Count: 0 };
         var state = App.Downloads.Get(_item.Id);
-        DownloadButton.IsEnabled = hasAudio;
+        DownloadButton.IsEnabled = hasAudio && (App.CanDownload || App.Cache.IsPinned(_item.Id));
+        if (!App.CanDownload && !App.Cache.IsPinned(_item.Id))
+        {
+            DownloadButtonText.Text = "Download nicht erlaubt";
+            ToolTipService.SetToolTip(DownloadButton, "Dein Audiobookshelf-Admin hat das Herunterladen für dein Konto deaktiviert.");
+            return;
+        }
 
         if (state is { IsActive: true })
         {

@@ -39,6 +39,22 @@ public sealed partial class MainWindow : Window
 
         _ = StartAsync();
         StartUpdateChecks();
+        _taskbar = new TaskbarIntegration(WinRT.Interop.WindowNative.GetWindowHandle(this), Player, DispatcherQueue);
+        Closed += (_, _) => { _taskbar.Dispose(); _miniPlayer?.Close(); };
+    }
+
+    private readonly TaskbarIntegration _taskbar;
+    private MiniPlayerWindow? _miniPlayer;
+
+    /// <summary>Öffnet den kompakten Mini-Player (immer im Vordergrund).</summary>
+    public void ShowMiniPlayer()
+    {
+        if (_miniPlayer is null)
+        {
+            _miniPlayer = new MiniPlayerWindow();
+            _miniPlayer.Closed += (_, _) => _miniPlayer = null;
+        }
+        _miniPlayer.Activate();
     }
 
     // ---------- Updates (GitHub-Releases) ----------
@@ -244,6 +260,7 @@ public sealed partial class MainWindow : Window
     public async Task OnLoggedInAsync(LoginResponse login)
     {
         if (App.IsOffline) LeaveOfflineMode();
+        App.User = login.User;
         App.Progress.Reset(login.User.MediaProgress);
         _ = App.UploadOfflineSessionsAsync();
         App.Settings.ServerUrl = App.Api.ServerUri!.ToString();

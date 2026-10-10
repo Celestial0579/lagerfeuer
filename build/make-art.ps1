@@ -109,4 +109,28 @@ $g.FillPath((New-Object System.Drawing.Drawing2D.LinearGradientBrush ([System.Dr
 Draw-Fire $g; $g.Restore($st)
 $g.Dispose(); Save-Bmp24 $bmp (Join-Path $root 'installer\art\header.bmp')
 
+# ---------- Taskleisten-Knöpfe (Symbole aus Segoe Fluent Icons, weiß) ----------
+$taskbar = Join-Path $assets 'Taskbar'
+New-Item -ItemType Directory -Force $taskbar | Out-Null
+$glyphs = [ordered]@{ previous = 0xE892; back10 = 0xED3C; play = 0xE768; pause = 0xE769; forward30 = 0xED3D; next = 0xE893 }
+foreach ($name in $glyphs.Keys) {
+    $iconSizes = 16, 20, 24, 32, 40, 48
+    $images = foreach ($s in $iconSizes) {
+        $bmp, $g = New-Canvas $s $s
+        $g.Clear([System.Drawing.Color]::Transparent)
+        $font = New-Object System.Drawing.Font 'Segoe Fluent Icons', ($s * 0.8), ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
+        $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+        $g.DrawString([string][char]$glyphs[$name], $font, [System.Drawing.Brushes]::White, [System.Drawing.RectangleF]::new(0, 0, $s, $s), $sf)
+        $g.Dispose(); $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); , $ms.ToArray()
+    }
+    $fs = [IO.File]::Create((Join-Path $taskbar "$name.ico")); $bw = New-Object IO.BinaryWriter $fs
+    $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]$iconSizes.Count); $off = 6 + 16 * $iconSizes.Count
+    for ($k = 0; $k -lt $iconSizes.Count; $k++) {
+        $s = $iconSizes[$k]
+        $bw.Write([byte]$s); $bw.Write([byte]$s); $bw.Write([byte]0); $bw.Write([byte]0); $bw.Write([uint16]1); $bw.Write([uint16]32)
+        $bw.Write([uint32]$images[$k].Length); $bw.Write([uint32]$off); $off += $images[$k].Length
+    }
+    foreach ($p in $images) { $bw.Write($p) }; $bw.Close()
+}
+
 Write-Host 'Grafiken erzeugt.' -ForegroundColor Green

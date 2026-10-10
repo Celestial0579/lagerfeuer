@@ -162,6 +162,9 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
+            <Button Click="OnMiniPlayer" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Mini-Player (immer im Vordergrund)">
+                <FontIcon Glyph="&#xE944;" />
+            </Button>
             <Button Click="OnStop" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Wiedergabe beenden">
                 <FontIcon Glyph="&#xE711;" />
             </Button>

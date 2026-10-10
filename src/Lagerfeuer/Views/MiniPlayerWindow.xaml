@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Lagerfeuer.Views.MiniPlayerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Lagerfeuer.Controls"
+    Title="Lagerfeuer – Mini-Player">
+
+    <Grid Background="{ThemeResource LfBackgroundBrush}">
+        <Grid.Resources>
+            <Style x:Key="MiniButton" BasedOn="{StaticResource DefaultButtonStyle}" TargetType="Button">
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+            </Style>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Ziehbare Titelleiste  -->
+        <Grid x:Name="TitleBar" Padding="10,0,0,0">
+            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                <Image Width="16" Height="16" Source="ms-appx:///Assets/AppIcon.png" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontFamily="{StaticResource LfSerifFont}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource LfHeadingBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Lagerfeuer" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="12,4,12,0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <controls:CoverImage Width="72" Height="72" DecodeWidth="72" ItemId="{x:Bind Player.ItemId, Mode=OneWay}" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock
+                    MaxLines="2"
+                    Style="{StaticResource LfBookTitleStyle}"
+                    Text="{x:Bind Player.Title, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Player.ChapterTitle, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind TimeText(Player.Position, Player.Duration), Mode=OneWay}" />
+            </StackPanel>
+        </Grid>
+
+        <ProgressBar
+            Grid.Row="2"
+            Margin="12,8,12,0"
+            Maximum="{x:Bind Player.Duration, Mode=OneWay}"
+            Value="{x:Bind Player.Position, Mode=OneWay}" />
+
+        <StackPanel
+            Grid.Row="3"
+            Margin="0,4,0,8"
+            HorizontalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="4">
+            <Button Click="OnBack" Style="{StaticResource MiniButton}" ToolTipService.ToolTip="10 Sekunden zurück">
+                <FontIcon Glyph="&#xED3C;" />
+            </Button>
+            <Button
+                Width="44"
+                Height="44"
+                Click="OnPlayPause"
+                CornerRadius="22"
+                Style="{StaticResource AccentButtonStyle}">
+                <FontIcon Glyph="{x:Bind PlayGlyph(Player.IsPlaying), Mode=OneWay}" />
+            </Button>
+            <Button Click="OnForward" Style="{StaticResource MiniButton}" ToolTipService.ToolTip="30 Sekunden vor">
+                <FontIcon Glyph="&#xED3D;" />
+            </Button>
+            <Button Click="OnNextChapter" Style="{StaticResource MiniButton}" ToolTipService.ToolTip="Nächstes Kapitel">
+                <FontIcon Glyph="&#xE893;" />
+            </Button>
+        </StackPanel>
+
+    </Grid>
+</Window>
