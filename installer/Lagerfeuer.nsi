@@ -40,7 +40,9 @@ RequestExecutionLevel user
 !define PROTOCOLKEY "Software\Classes\audiobookshelf"
 !define HOMEPAGE    "https://github.com/Celestial0579/lagerfeuer"
 
-Name "${DISPLAYNAME}"
+Name "${APPNAME}"
+Caption "Lagerfeuer ${VERSION} – Installation"
+UninstallCaption "Lagerfeuer – Deinstallation"
 OutFile "${OUTFILE}"
 BrandingText "${APPNAME} ${VERSION} (${ARCH})"
 InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
@@ -70,6 +72,24 @@ Var Restart
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchApp
 !define MUI_FINISHPAGE_RUN_TEXT "Lagerfeuer jetzt starten"
+!define MUI_FINISHPAGE_LINK "Lagerfeuer auf GitHub"
+!define MUI_FINISHPAGE_LINK_LOCATION "${HOMEPAGE}"
+
+; Grafiken im Farbschema von firestrike.de (erzeugt von build/make-art.ps1, doppelte Auflösung für hohe DPI)
+!define MUI_WELCOMEFINISHPAGE_BITMAP "art\welcome.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "art\welcome.bmp"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "art\header.bmp"
+!define MUI_HEADERIMAGE_UNBITMAP "art\header.bmp"
+
+; Eigene Texte in Du-Form (wie in der App)
+!define MUI_WELCOMEPAGE_TITLE "Willkommen bei Lagerfeuer"
+!define MUI_WELCOMEPAGE_TEXT "Lagerfeuer bringt die Hörbücher aus deinem Audiobookshelf als native App auf den Windows-Desktop.$\r$\n$\r$\nDie Installation erfolgt nur für dein Benutzerkonto und braucht keine Administratorrechte. Updates holt sich Lagerfeuer später selbst.$\r$\n$\r$\nKlicke auf „Weiter“, um fortzufahren."
+!define MUI_COMPONENTSPAGE_TEXT_TOP "Wähle aus, was installiert werden soll."
+!define MUI_DIRECTORYPAGE_TEXT_TOP "Lagerfeuer wird in folgendes Verzeichnis installiert. Du kannst auch ein anderes wählen."
+!define MUI_FINISHPAGE_TITLE "Lagerfeuer ist bereit"
+!define MUI_FINISHPAGE_TEXT "Lagerfeuer wurde installiert. Du findest es im Startmenü.$\r$\n$\r$\nMelde dich beim ersten Start mit deinem Audiobookshelf-Server an."
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_COMPONENTS
