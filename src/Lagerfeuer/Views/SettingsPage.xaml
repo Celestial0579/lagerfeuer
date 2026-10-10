@@ -69,8 +69,19 @@
                 <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
             </StackPanel>
 
-            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Info" />
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Über Lagerfeuer" />
             <TextBlock x:Name="InfoText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap">
+                <Run Text="Lagerfeuer ist freie Software: Du kannst es unter den Bedingungen der GNU General Public License Version 3 weitergeben und verändern – mit einer zusätzlichen Erlaubnis für .NET und das Windows App SDK. Lagerfeuer wird ohne jede Gewährleistung bereitgestellt, auch ohne die stillschweigende Gewährleistung der Marktreife oder der Eignung für einen bestimmten Zweck." />
+                <LineBreak />
+                <LineBreak />
+                <Run Text="Lagerfeuer ist ein unabhängiges Projekt und steht in keiner Verbindung zum Audiobookshelf-Projekt." />
+            </TextBlock>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Click="OnShowLicense" Content="Lizenz (GPL-3.0)" />
+                <Button Click="OnShowThirdParty" Content="Lizenzen von Drittanbietern" />
+                <HyperlinkButton Content="Quellcode" NavigateUri="https://github.com/Celestial0579/lagerfeuer" />
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <Button Click="OnOpenLog" Content="Log öffnen" ToolTipService.ToolTip="Für Fehlerberichte: Protokoll der App anzeigen" />
                 <HyperlinkButton Content="Fehler melden" NavigateUri="https://github.com/Celestial0579/lagerfeuer/issues/new/choose" />

@@ -98,6 +98,10 @@ Var Restart
 !define MUI_FINISHPAGE_TEXT "Lagerfeuer wurde installiert. Du findest es im Startmenü.$\r$\n$\r$\nMelde dich beim ersten Start mit deinem Audiobookshelf-Server an."
 
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_LICENSEPAGE_TEXT_TOP "Lagerfeuer ist freie Software (GPL-3.0). Bitte lies die Hinweise zu den mitgelieferten Komponenten."
+!define MUI_LICENSEPAGE_CHECKBOX
+!define MUI_LICENSEPAGE_CHECKBOX_TEXT "Ich stimme den Lizenzbedingungen der mitgelieferten Komponenten zu."
+!insertmacro MUI_PAGE_LICENSE "license-de.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

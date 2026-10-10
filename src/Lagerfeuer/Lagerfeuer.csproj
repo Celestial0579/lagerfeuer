@@ -42,8 +42,20 @@
     <Content Include="Assets\Taskbar\*.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Lizenztexte werden mit der App ausgeliefert (Ordner "Licenses") und in den Einstellungen angezeigt. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <Content Include="..\..\LICENSE" Link="Licenses\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\LICENSE-ADDITIONAL-PERMISSION.md" Link="Licenses\LICENSE-ADDITIONAL-PERMISSION.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="Licenses\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\*.txt" Link="Licenses\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Nur die benötigten Teile des Windows App SDK (statt des Gesamtpakets mit KI-/ML-, Search- und
+         Widgets-Komponenten): kleinere App, weniger Fremdlizenzen. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>

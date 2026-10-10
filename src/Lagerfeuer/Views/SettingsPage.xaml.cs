@@ -23,7 +23,7 @@ public sealed partial class SettingsPage : Page
         _loading = false;
 
         AccountText.Text = $"{App.Settings.Username} auf {App.Settings.ServerUrl}";
-        InfoText.Text = $"Lagerfeuer {UpdateService.CurrentVersion.ToString(3)} ({(UpdateService.IsPortable ? "portabel" : "installiert")}) · " +
+        InfoText.Text = $"Lagerfeuer {UpdateService.CurrentVersion.ToString(3)} ({(UpdateService.IsPortable ? "portabel" : "installiert")}) · © 2026 Celestial0579 · " +
                         $"{UpdateService.RepositoryUrl} · Lizenz: GPL-3.0 · Daten: {AppPaths.Root}";
         _ = UpdateCacheSizeAsync();
         if (!App.IsOffline) _ = LoadSessionsAsync();
@@ -160,6 +160,65 @@ public sealed partial class SettingsPage : Page
         UpdateStatusText.Text = "Suche nach Updates …";
         UpdateStatusText.Text = await App.MainWindow.CheckForUpdatesAsync(manual: true);
         CheckUpdateButton.IsEnabled = true;
+    }
+
+    // ---------- Lizenzen ----------
+
+    private static string LicensesDirectory => Path.Combine(AppContext.BaseDirectory, "Licenses");
+
+    private async void OnShowLicense(object sender, RoutedEventArgs e)
+    {
+        var permission = ReadLicense("LICENSE-ADDITIONAL-PERMISSION.md");
+        var gpl = ReadLicense("LICENSE.txt");
+        await ShowTextDialogAsync("Lizenz", permission + "\n\n" + new string('─', 40) + "\n\n" + gpl);
+    }
+
+    private async void OnShowThirdParty(object sender, RoutedEventArgs e)
+    {
+        var text = new System.Text.StringBuilder(ReadLicense("THIRD-PARTY-NOTICES.md"));
+        if (Directory.Exists(LicensesDirectory))
+        {
+            // Vollständige Lizenztexte der mitgelieferten Komponenten anhängen
+            foreach (var file in Directory.GetFiles(LicensesDirectory, "*.txt").Order())
+            {
+                if (Path.GetFileName(file) == "LICENSE.txt") continue; // GPL von Lagerfeuer selbst
+                text.Append("\n\n").Append(new string('─', 40)).Append('\n').Append(Path.GetFileName(file)).Append("\n\n");
+                text.Append(File.ReadAllText(file));
+            }
+        }
+        await ShowTextDialogAsync("Lizenzen von Drittanbietern", text.ToString());
+    }
+
+    private static string ReadLicense(string name)
+    {
+        var path = Path.Combine(LicensesDirectory, name);
+        return File.Exists(path)
+            ? File.ReadAllText(path)
+            : $"{name} wurde nicht gefunden. Alle Lizenztexte: https://github.com/Celestial0579/lagerfeuer";
+    }
+
+    private async Task ShowTextDialogAsync(string title, string text)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            CloseButtonText = "Schließen",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 520,
+                Content = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+                    FontSize = 12,
+                },
+            },
+        };
+        dialog.Resources["ContentDialogMaxWidth"] = 900.0;
+        await dialog.ShowAsync();
     }
 
     private void OnOpenLog(object sender, RoutedEventArgs e)

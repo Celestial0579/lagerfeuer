@@ -1,0 +1,36 @@
+﻿LAGERFEUER – LIZENZ UND HINWEISE
+================================
+
+Lagerfeuer – Copyright (C) 2026 Celestial0579
+
+Lagerfeuer ist freie Software: Du kannst es unter den Bedingungen der GNU General
+Public License Version 3 (GPL-3.0) weitergeben und/oder verändern – mit einer
+zusätzlichen Erlaubnis für die Kopplung an .NET und das Windows App SDK (siehe
+LICENSE-ADDITIONAL-PERMISSION.md).
+
+Lagerfeuer wird in der Hoffnung bereitgestellt, dass es nützlich ist, aber OHNE
+JEDE GEWÄHRLEISTUNG – sogar ohne die implizite Gewährleistung der MARKTREIFE oder
+der EIGNUNG FÜR EINEN BESTIMMTEN ZWECK. Details stehen in der GPL-3.0.
+
+Quellcode: https://github.com/Celestial0579/lagerfeuer
+
+
+MITGELIEFERTE KOMPONENTEN VON MICROSOFT
+---------------------------------------
+
+Lagerfeuer enthält Komponenten von Microsoft, die nicht unter der GPL stehen,
+sondern unter ihren eigenen Lizenzbedingungen:
+
+  - Windows App SDK (WinUI 3)      – Microsoft Software License Terms
+  - Microsoft Edge WebView2 SDK    – BSD-ähnliche Lizenz
+  - Windows SDK-Projektionen       – Microsoft Windows SDK License
+  - .NET-Laufzeit                  – MIT-Lizenz
+
+Mit der Installation stimmst du den Lizenzbedingungen dieser Komponenten zu.
+Die vollständigen Texte findest du nach der Installation im Ordner "Licenses"
+im Installationsverzeichnis sowie unter
+https://github.com/Celestial0579/lagerfeuer/blob/main/THIRD-PARTY-NOTICES.md
+
+
+Lagerfeuer ist ein unabhängiges Projekt und steht in keiner Verbindung zum
+Audiobookshelf-Projekt.

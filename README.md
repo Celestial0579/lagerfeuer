@@ -175,4 +175,10 @@ Ideen für später:
 - Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
 
-[GPL-3.0](LICENSE) – wie Audiobookshelf selbst. Lagerfeuer ist ein unabhängiges Projekt und steht in keiner Verbindung zum Audiobookshelf-Projekt.
+Lagerfeuer – Copyright (C) 2026 Celestial0579
+
+Freie Software unter der [GPL-3.0](LICENSE), mit einer [zusätzlichen Erlaubnis nach § 7](LICENSE-ADDITIONAL-PERMISSION.md) für die Kopplung an .NET und das Windows App SDK. Lagerfeuer wird ohne jede Gewährleistung bereitgestellt.
+
+Mitgelieferte Komponenten von Drittanbietern (.NET, Windows App SDK, WebView2, CommunityToolkit) stehen unter ihren eigenen Lizenzen, siehe [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) und den Ordner [`licenses/`](licenses). In der App findest du alle Texte unter Einstellungen → Über Lagerfeuer.
+
+Lagerfeuer ist ein unabhängiges Projekt und steht in keiner Verbindung zum Audiobookshelf-Projekt.
