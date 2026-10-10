@@ -15,6 +15,12 @@ public partial class App : Application
     public static LocalSessionStore LocalSessions { get; } = new(Path.Combine(AppPaths.Root, "offline-sessions.json"));
     public static DownloadManager Downloads { get; } = new(Api, Cache, Covers);
     public static CallDetector Calls { get; } = new();
+    public static LiveSyncClient LiveSync { get; } = new(Api);
+
+    /// <summary>Lesezeichen wurden (auch von einem anderen Gerät) geändert.</summary>
+    public static event EventHandler? BookmarksChanged;
+
+    public static void RaiseBookmarksChanged() => BookmarksChanged?.Invoke(null, EventArgs.Empty);
 
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
     public static bool IsOffline { get; set; }
@@ -82,8 +88,36 @@ public partial class App : Application
         Player.LocalSessionEnded += (_, _) => { if (!IsOffline) _ = UploadOfflineSessionsAsync(); };
         Player.AttachCallDetector(Calls);
         if (Settings.PauseOnCalls) _ = Calls.StartAsync();
+        LiveSync.ProgressUpdated += (_, p) => dispatcher.TryEnqueue(() => OnRemoteProgress(p));
+        LiveSync.UserUpdated += (_, user) => dispatcher.TryEnqueue(() =>
+        {
+            Progress.Reset(user.MediaProgress);
+            if (User is not null)
+            {
+                User.Bookmarks = user.Bookmarks;
+                RaiseBookmarksChanged();
+            }
+        });
         MainWindow = new MainWindow();
         MainWindow.Activate();
+    }
+
+    /// <summary>
+    /// Fortschritt von einem anderen Gerät: Anzeigen aktualisieren und – wenn dasselbe Buch hier
+    /// geladen, aber pausiert ist – an die neue Stelle springen.
+    /// </summary>
+    private static void OnRemoteProgress(RemoteProgress remote)
+    {
+        if (remote.SessionId is not null && remote.SessionId == Player.SessionId) return; // eigene Meldung
+        var p = remote.Progress;
+        Progress.Set(p);
+
+        if (Player.ItemId == p.LibraryItemId && p.EpisodeId == Player.EpisodeId && !Player.IsPlaying && !p.IsFinished
+            && Math.Abs(Player.Position - p.CurrentTime) > 5)
+        {
+            _ = Player.SeekAsync(p.CurrentTime);
+            MainWindow?.ShowInfo($"Fortschritt übernommen{(string.IsNullOrEmpty(remote.DeviceDescription) ? "" : " von " + remote.DeviceDescription)}: {Format.Time(p.CurrentTime)}");
+        }
     }
 
     /// <summary>Lädt offline gehörte Sessions zum Server hoch (still; bei Fehlern beim nächsten Mal).</summary>

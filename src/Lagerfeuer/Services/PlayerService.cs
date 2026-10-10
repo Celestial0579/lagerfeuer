@@ -111,6 +111,12 @@ public sealed partial class PlayerService : ObservableObject
 
     public IReadOnlyList<Chapter> Chapters => _session?.Chapters ?? [];
 
+    /// <summary>Id der laufenden Server-Session (um eigene Live-Sync-Meldungen zu erkennen).</summary>
+    public string? SessionId => _session?.Id;
+
+    /// <summary>Folgen-Id bei Podcasts (sonst null).</summary>
+    public string? EpisodeId => _session?.EpisodeId;
+
     /// <summary>Nach jedem erfolgreichen Sync/Close – z.B. um Fortschrittsanzeigen zu aktualisieren.</summary>
     public event EventHandler<(string ItemId, double CurrentTime, double Duration)>? ProgressSynced;
 

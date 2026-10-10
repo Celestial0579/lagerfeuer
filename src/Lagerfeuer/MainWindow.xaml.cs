@@ -261,6 +261,7 @@ public sealed partial class MainWindow : Window
     {
         if (App.IsOffline) LeaveOfflineMode();
         App.User = login.User;
+        App.LiveSync.Start();
         App.Progress.Reset(login.User.MediaProgress);
         _ = App.UploadOfflineSessionsAsync();
         App.Settings.ServerUrl = App.Api.ServerUri!.ToString();
@@ -373,8 +374,22 @@ public sealed partial class MainWindow : Window
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static partial bool SetForegroundWindow(nint hwnd);
 
+    /// <summary>Kurzer Hinweis, der sich nach einigen Sekunden selbst schließt.</summary>
+    public void ShowInfo(string message)
+    {
+        ErrorBar.Severity = InfoBarSeverity.Informational;
+        ErrorBar.Message = message;
+        ErrorBar.IsOpen = true;
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromSeconds(6);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => { if (ErrorBar.Message == message) ErrorBar.IsOpen = false; };
+        timer.Start();
+    }
+
     public void ShowError(string message)
     {
+        ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = true;
     }
