@@ -207,18 +207,18 @@ public sealed class AbsApiClient : IDisposable
 
     // ---------- Wiedergabe ----------
 
+    public static DeviceInfo CreateDeviceInfo(string deviceId) => new()
+    {
+        DeviceId = deviceId,
+        ClientName = ClientName,
+        ClientVersion = (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(0, 0, 0)).ToString(3),
+        DeviceName = Environment.MachineName,
+    };
+
     public Task<PlaybackSession> StartPlaybackAsync(string itemId, string deviceId, CancellationToken ct = default)
         => SendJsonAsync<PlaybackSession>(HttpMethod.Post, $"api/items/{itemId}/play", new
         {
-            deviceInfo = new
-            {
-                deviceId,
-                clientName = ClientName,
-                clientVersion = "0.1.0",
-                manufacturer = "Microsoft",
-                model = "Windows",
-                deviceName = Environment.MachineName,
-            },
+            deviceInfo = CreateDeviceInfo(deviceId),
             forceDirectPlay = true,
             forceTranscode = false,
             mediaPlayer = "WinUI MediaPlayer",
@@ -228,6 +228,17 @@ public sealed class AbsApiClient : IDisposable
                 "audio/x-flac", "audio/wav", "audio/x-wav", "audio/ogg", "audio/opus", "audio/webm",
             },
         }, ct);
+
+    /// <summary>Überträgt offline entstandene Sessions (POST /api/session/local-all).</summary>
+    public async Task<List<LocalSessionResult>> SyncLocalSessionsAsync(IReadOnlyList<LocalSession> sessions, string deviceId,
+        CancellationToken ct = default)
+    {
+        var deviceInfo = CreateDeviceInfo(deviceId);
+        foreach (var s in sessions) s.DeviceInfo ??= deviceInfo;
+        var resp = await SendJsonAsync<LocalSessionSyncResponse>(HttpMethod.Post, "api/session/local-all",
+            new { sessions, deviceInfo }, ct);
+        return resp.Results;
+    }
 
     public Task SyncSessionAsync(string sessionId, double currentTime, double timeListened, double duration,
         CancellationToken ct = default)

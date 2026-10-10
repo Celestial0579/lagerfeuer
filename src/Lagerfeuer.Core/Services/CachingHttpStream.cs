@@ -44,6 +44,10 @@ public sealed class CachingHttpStream : Stream
     public string DataPath { get; }
     public override long Length { get; }
     public bool IsComplete => Volatile.Read(ref _haveCount) == _chunkCount;
+
+    /// <summary>Vollständig geladen UND auf der Platte als vollständig vermerkt (danach offline nutzbar).</summary>
+    public bool IsPersisted => _persisted;
+    private volatile bool _persisted;
     public double CachedFraction => _chunkCount == 0 ? 1 : (double)Volatile.Read(ref _haveCount) / _chunkCount;
 
     /// <summary>Wird (auf einem Hintergrund-Thread) ausgelöst, sobald die Datei vollständig gecached ist.</summary>
@@ -59,6 +63,7 @@ public sealed class CachingHttpStream : Stream
         _chunkCount = have.Length;
         _have = have;
         _haveCount = have.Count(h => h);
+        _persisted = _haveCount == _chunkCount;
 
         _file = new FileStream(dataPath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.RandomAccess);
@@ -209,6 +214,7 @@ public sealed class CachingHttpStream : Stream
             {
                 lock (_fileLock) { if (!_fileClosed) _file.Flush(); }
                 SaveMap();
+                _persisted = true;
                 Completed?.Invoke(this, EventArgs.Empty);
                 return;
             }

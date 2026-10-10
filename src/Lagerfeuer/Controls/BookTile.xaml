@@ -18,6 +18,17 @@
                 Visibility="{x:Bind Item.IsFinished, Mode=OneWay}">
                 <FontIcon FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Glyph="&#xE73E;" />
             </Border>
+            <Border
+                Margin="6"
+                Padding="4,2"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource LfSurfaceDeepBrush}"
+                CornerRadius="4"
+                ToolTipService.ToolTip="Heruntergeladen – offline verfügbar"
+                Visibility="{x:Bind Item.IsDownloaded, Mode=OneWay}">
+                <FontIcon FontSize="12" Foreground="{ThemeResource LfSparkBrush}" Glyph="&#xE896;" />
+            </Border>
         </Grid>
         <ProgressBar
             Maximum="100"

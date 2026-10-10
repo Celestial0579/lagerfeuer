@@ -154,9 +154,82 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Log.Error("Automatische Anmeldung fehlgeschlagen", ex);
-            ShowLogin($"Server nicht erreichbar: {ex.Message}", canRetry: true);
+            Log.Error("Automatische Anmeldung fehlgeschlagen – starte offline", ex);
+            EnterOfflineMode();
         }
+    }
+
+    // ---------- Offline-Modus ----------
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _reconnectTimer;
+
+    /// <summary>Server nicht erreichbar: Downloads stehen weiter zur Verfügung, Verbindung wird regelmäßig geprüft.</summary>
+    private void EnterOfflineMode()
+    {
+        App.IsOffline = true;
+        Player.PreferOffline = true;
+        OfflineBar.IsOpen = true;
+
+        LoginFrame.Content = null;
+        LoginFrame.Visibility = Visibility.Collapsed;
+        Nav.Visibility = Visibility.Visible;
+        foreach (var item in _libraryItems) item.IsEnabled = false;
+        ((NavigationViewItem)Nav.MenuItems[0]).IsEnabled = false;
+
+        Nav.SelectedItem = DownloadsItem;
+        ContentFrame.BackStack.Clear();
+        ContentFrame.Navigate(typeof(DownloadsPage), null, new SuppressNavigationTransitionInfo());
+
+        _reconnectTimer ??= CreateReconnectTimer();
+        _reconnectTimer.Start();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer CreateReconnectTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromSeconds(30);
+        timer.Tick += (_, _) => _ = TryReconnectAsync(manual: false);
+        return timer;
+    }
+
+    private void OnReconnect(object sender, RoutedEventArgs e) => _ = TryReconnectAsync(manual: true);
+
+    private bool _reconnecting;
+
+    private async Task TryReconnectAsync(bool manual)
+    {
+        if (!App.IsOffline || _reconnecting) return;
+        _reconnecting = true;
+        ReconnectButton.IsEnabled = false;
+        try
+        {
+            var login = await App.Api.AuthorizeAsync();
+            Log.Info("Server wieder erreichbar.");
+            await OnLoggedInAsync(login);
+        }
+        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.Unauthorized)
+        {
+            LeaveOfflineMode();
+            ShowLogin("Die Anmeldung ist abgelaufen. Bitte erneut anmelden.");
+        }
+        catch (Exception ex)
+        {
+            if (manual) OfflineBar.Message = $"Weiterhin offline: {ex.Message}";
+        }
+        finally
+        {
+            _reconnecting = false;
+            ReconnectButton.IsEnabled = true;
+        }
+    }
+
+    private void LeaveOfflineMode()
+    {
+        App.IsOffline = false;
+        Player.PreferOffline = false;
+        OfflineBar.IsOpen = false;
+        _reconnectTimer?.Stop();
+        ((NavigationViewItem)Nav.MenuItems[0]).IsEnabled = true;
     }
 
     public void RetryStart() => _ = StartAsync();
@@ -170,7 +243,9 @@ public sealed partial class MainWindow : Window
 
     public async Task OnLoggedInAsync(LoginResponse login)
     {
+        if (App.IsOffline) LeaveOfflineMode();
         App.Progress.Reset(login.User.MediaProgress);
+        _ = App.UploadOfflineSessionsAsync();
         App.Settings.ServerUrl = App.Api.ServerUri!.ToString();
         App.Settings.Username = login.User.Username;
         App.Settings.Save();
@@ -231,6 +306,9 @@ public sealed partial class MainWindow : Window
             case "settings":
                 ContentFrame.Navigate(typeof(SettingsPage), null, args.RecommendedNavigationTransitionInfo);
                 break;
+            case "downloads":
+                ContentFrame.Navigate(typeof(DownloadsPage), null, args.RecommendedNavigationTransitionInfo);
+                break;
             case "logout":
                 _ = LogoutAsync();
                 break;
@@ -257,6 +335,7 @@ public sealed partial class MainWindow : Window
         {
             var t when t == typeof(HomePage) => Nav.MenuItems[0],
             var t when t == typeof(SettingsPage) => SettingsItem,
+            var t when t == typeof(DownloadsPage) => DownloadsItem,
             var t when t == typeof(LibraryPage) => _libraryItems.FirstOrDefault(i => ReferenceEquals(i.Tag, e.Parameter)),
             _ => Nav.SelectedItem,
         };

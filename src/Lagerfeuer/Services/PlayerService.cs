@@ -24,6 +24,8 @@ public sealed partial class PlayerService : ObservableObject
     private readonly CacheManager _cache;
     private readonly CoverCache _covers;
     private readonly AppSettings _settings;
+    private readonly LocalSessionStore _localSessions;
+    private readonly ProgressStore _progress;
     private readonly DispatcherQueue _dq;
     private readonly MediaPlayer _player;
     private readonly DispatcherQueueTimer _tick;
@@ -31,6 +33,7 @@ public sealed partial class PlayerService : ObservableObject
     private readonly Stopwatch _sinceSync = new();
 
     private PlaybackSession? _session;
+    private LocalSession? _localSession; // gesetzt bei Wiedergabe ohne Server
     private int _trackIndex = -1;
     private CachingHttpStream? _stream;
     private (int Index, CachingHttpStream Stream)? _prefetch;
@@ -43,12 +46,14 @@ public sealed partial class PlayerService : ObservableObject
     private bool _sleepAtChapterEnd;
 
     public PlayerService(AbsApiClient api, CacheManager cache, CoverCache covers, AppSettings settings,
-        DispatcherQueue dq)
+        LocalSessionStore localSessions, ProgressStore progress, DispatcherQueue dq)
     {
         _api = api;
         _cache = cache;
         _covers = covers;
         _settings = settings;
+        _localSessions = localSessions;
+        _progress = progress;
         _dq = dq;
 
         _player = new MediaPlayer
@@ -95,6 +100,14 @@ public sealed partial class PlayerService : ObservableObject
     [ObservableProperty] public partial double CachedFraction { get; set; }
     [ObservableProperty] public partial string? SleepTimerText { get; set; }
     [ObservableProperty] public partial string? ErrorMessage { get; set; }
+    /// <summary>Läuft die aktuelle Wiedergabe ohne Server (heruntergeladenes Buch)?</summary>
+    [ObservableProperty] public partial bool IsOfflineSession { get; set; }
+
+    /// <summary>App ist offline: heruntergeladene Bücher direkt lokal abspielen, ohne Server-Versuch.</summary>
+    public bool PreferOffline { get; set; }
+
+    /// <summary>Eine Offline-Session wurde beendet – Gelegenheit zum Hochladen.</summary>
+    public event EventHandler? LocalSessionEnded;
 
     public IReadOnlyList<Chapter> Chapters => _session?.Chapters ?? [];
 
@@ -130,14 +143,18 @@ public sealed partial class PlayerService : ObservableObject
         ErrorMessage = null;
         try
         {
-            var session = await _api.StartPlaybackAsync(itemId, _settings.DeviceId);
+            var session = await StartSessionAsync(itemId);
             if (session.AudioTracks.Count == 0)
                 throw new AbsApiException("Dieses Element enthält keine abspielbaren Audiodateien.");
 
             session.AudioTracks.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
             _session = session;
-            _cache.SaveSessionMetadata(session);
-            _cache.EnforceLimit((long)_settings.CacheLimitGb * 1024 * 1024 * 1024, [itemId]);
+            if (_localSession is null)
+            {
+                // Buchdaten lokal sichern: ist alles gehört/geladen, geht es später auch offline.
+                if (_cache.GetLocalItem(itemId) is null) _cache.SaveLocalItem(LocalItem.FromSession(session));
+                _cache.EnforceLimit((long)_settings.CacheLimitGb * 1024 * 1024 * 1024, [itemId]);
+            }
 
             ItemId = itemId;
             Title = session.DisplayTitle ?? "";
@@ -169,6 +186,51 @@ public sealed partial class PlayerService : ObservableObject
             IsLoading = false;
         }
     }
+
+    /// <summary>
+    /// Startet eine Session am Server – oder, wenn dieser nicht erreichbar ist und das Buch vollständig
+    /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird.
+    /// </summary>
+    private async Task<PlaybackSession> StartSessionAsync(string itemId)
+    {
+        _localSession = null;
+        IsOfflineSession = false;
+        if (!PreferOffline)
+        {
+            try
+            {
+                return await _api.StartPlaybackAsync(itemId, _settings.DeviceId);
+            }
+            catch (AbsApiException ex) when (ex.Status is null && CanPlayOffline(itemId))
+            {
+                Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {itemId} offline.");
+            }
+        }
+
+        var local = _cache.GetLocalItem(itemId);
+        if (local is null || !_cache.IsAvailableOffline(local))
+            throw new AbsApiException("Offline nicht verfügbar: Dieses Buch ist nicht vollständig heruntergeladen.");
+
+        var progress = _progress.Get(itemId);
+        var start = progress is { IsFinished: false } ? progress.CurrentTime : 0;
+        var session = local.ToOfflineSession("local-" + Guid.NewGuid().ToString("N"), start);
+        _localSession = new LocalSession
+        {
+            LibraryItemId = itemId,
+            DisplayTitle = local.Title,
+            DisplayAuthor = local.Author,
+            Duration = local.Duration,
+            StartTime = start,
+            CurrentTime = start,
+            DeviceInfo = AbsApiClient.CreateDeviceInfo(_settings.DeviceId),
+        };
+        _localSessions.Upsert(_localSession);
+        IsOfflineSession = true;
+        return session;
+    }
+
+    private bool CanPlayOffline(string itemId)
+        => _cache.GetLocalItem(itemId) is { } local && _cache.IsAvailableOffline(local);
 
     public void Play()
     {
@@ -248,7 +310,13 @@ public sealed partial class PlayerService : ObservableObject
         _listenWatch.Stop();
 
         var session = _session;
-        if (session is not null)
+        if (session is not null && _localSession is { } local)
+        {
+            RecordLocal(local, CurrentBookTime(), TakeListenedSeconds());
+            _localSession = null;
+            LocalSessionEnded?.Invoke(this, EventArgs.Empty);
+        }
+        else if (session is not null)
         {
             var current = CurrentBookTime();
             var listened = TakeListenedSeconds();
@@ -275,6 +343,7 @@ public sealed partial class PlayerService : ObservableObject
         _sleepAtChapterEnd = false;
         SleepTimerText = null;
         HasSession = false;
+        IsOfflineSession = false;
         IsPlaying = false;
         IsBuffering = false;
         ItemId = null;
@@ -463,6 +532,7 @@ public sealed partial class PlayerService : ObservableObject
         Position = Duration;
         IsPlaying = false;
         await SyncAsync(force: true);
+        if (_localSession is not null) return; // Offline: "beendet" ergibt sich beim Hochladen aus der Position
         try
         {
             await _api.UpdateProgressAsync(_session.LibraryItemId, Duration, Duration, isFinished: true);
@@ -575,6 +645,12 @@ public sealed partial class PlayerService : ObservableObject
         _sinceSync.Restart();
         var listened = TakeListenedSeconds();
         var current = CurrentBookTime();
+        if (_localSession is { } local)
+        {
+            RecordLocal(local, current, listened);
+            _syncInFlight = false;
+            return;
+        }
         try
         {
             await _api.SyncSessionAsync(session.Id, current, listened, Duration);
@@ -613,4 +689,14 @@ public sealed partial class PlayerService : ObservableObject
     }
 
     private double _carryOverListened;
+
+    /// <summary>Fortschritt einer Offline-Session lokal festhalten (wird später hochgeladen).</summary>
+    private void RecordLocal(LocalSession local, double current, double listened)
+    {
+        local.CurrentTime = current;
+        local.TimeListening = Math.Round(local.TimeListening + listened, 1);
+        local.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _localSessions.Upsert(local);
+        ProgressSynced?.Invoke(this, (local.LibraryItemId, current, local.Duration));
+    }
 }

@@ -100,7 +100,7 @@ public sealed class BookMedia
     public double Duration { get; set; }
     public List<Chapter> Chapters { get; set; } = [];
     /// <summary>Nur im erweiterten Item (expanded=1) befüllt; leer z.B. bei reinen E-Books.</summary>
-    public List<System.Text.Json.JsonElement>? AudioFiles { get; set; }
+    public List<AudioFile>? AudioFiles { get; set; }
 }
 
 public sealed class BookMetadata
@@ -174,4 +174,139 @@ public sealed class AudioTrackMetadata
 public sealed class MediaProgressResponse
 {
     public List<MediaProgress> MediaProgress { get; set; } = [];
+}
+
+/// <summary>Audiodatei eines Buchs (im erweiterten Item unter media.audioFiles).</summary>
+public sealed class AudioFile
+{
+    public int Index { get; set; }
+    public string Ino { get; set; } = "";
+    public double Duration { get; set; }
+    public string? MimeType { get; set; }
+    /// <summary>Vom Admin ausgeschlossen – wird nicht abgespielt.</summary>
+    public bool Exclude { get; set; }
+    public AudioTrackMetadata? Metadata { get; set; }
+}
+
+/// <summary>
+/// Lokal gespeicherte Daten eines Buchs ("item.json" im Cache-Ordner): alles, was zum Abspielen
+/// ohne Server nötig ist. Wird beim Streamen und beim Herunterladen angelegt.
+/// </summary>
+public sealed class LocalItem
+{
+    public string LibraryItemId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string? Author { get; set; }
+    public string? Narrator { get; set; }
+    public string? Description { get; set; }
+    public double Duration { get; set; }
+    public List<AudioTrack> Tracks { get; set; } = [];
+    public List<Chapter> Chapters { get; set; } = [];
+    public DateTimeOffset SavedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    public static LocalItem FromSession(PlaybackSession session) => new()
+    {
+        LibraryItemId = session.LibraryItemId,
+        Title = session.DisplayTitle ?? "",
+        Author = session.DisplayAuthor,
+        Duration = session.Duration > 0 ? session.Duration : session.AudioTracks.Sum(t => t.Duration),
+        Tracks = session.AudioTracks.OrderBy(t => t.StartOffset).ToList(),
+        Chapters = session.Chapters,
+    };
+
+    /// <summary>
+    /// Baut die Trackliste aus einem erweiterten Item – wie der Server beim Direct Play
+    /// (Book.getTracklist: nicht ausgeschlossene Dateien in Reihenfolge, Startzeiten aufsummiert).
+    /// </summary>
+    public static LocalItem FromLibraryItem(LibraryItem item)
+    {
+        var offset = 0.0;
+        var tracks = new List<AudioTrack>();
+        foreach (var file in (item.Media.AudioFiles ?? []).Where(f => !f.Exclude).OrderBy(f => f.Index))
+        {
+            tracks.Add(new AudioTrack
+            {
+                Index = file.Index,
+                StartOffset = offset,
+                Duration = file.Duration,
+                Title = file.Metadata?.Filename,
+                ContentUrl = $"/api/items/{item.Id}/file/{file.Ino}",
+                MimeType = file.MimeType,
+                Metadata = file.Metadata,
+            });
+            offset += file.Duration;
+        }
+
+        var meta = item.Media.Metadata;
+        return new LocalItem
+        {
+            LibraryItemId = item.Id,
+            Title = meta.Title ?? "",
+            Author = meta.DisplayAuthor,
+            Narrator = meta.DisplayNarrator,
+            Description = meta.Description,
+            Duration = item.Media.Duration > 0 ? item.Media.Duration : offset,
+            Tracks = tracks,
+            Chapters = item.Media.Chapters,
+        };
+    }
+
+    /// <summary>Session für die Wiedergabe ohne Server.</summary>
+    public PlaybackSession ToOfflineSession(string sessionId, double currentTime) => new()
+    {
+        Id = sessionId,
+        LibraryItemId = LibraryItemId,
+        DisplayTitle = Title,
+        DisplayAuthor = Author,
+        Duration = Duration,
+        CurrentTime = currentTime,
+        AudioTracks = Tracks.Select(t => t).ToList(),
+        Chapters = Chapters,
+    };
+}
+/// <summary>
+/// Offline entstandene Wiedergabe-Session im Format von POST /api/session/local(-all).
+/// Zeiten in Sekunden, Zeitstempel in Millisekunden seit 1970.
+/// </summary>
+public sealed class LocalSession
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string LibraryItemId { get; set; } = "";
+    public string? EpisodeId { get; set; }
+    public string MediaType { get; set; } = "book";
+    public string? DisplayTitle { get; set; }
+    public string? DisplayAuthor { get; set; }
+    public double Duration { get; set; }
+    /// <summary>3 = lokal (PlayMethod.LOCAL).</summary>
+    public int PlayMethod { get; set; } = 3;
+    public string MediaPlayer { get; set; } = "WinUI MediaPlayer";
+    public double TimeListening { get; set; }
+    public double StartTime { get; set; }
+    public double CurrentTime { get; set; }
+    public long StartedAt { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    public long UpdatedAt { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    public DeviceInfo? DeviceInfo { get; set; }
+}
+
+public sealed class DeviceInfo
+{
+    public string DeviceId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ClientVersion { get; set; } = "";
+    public string Manufacturer { get; set; } = "Microsoft";
+    public string Model { get; set; } = "Windows";
+    public string? DeviceName { get; set; }
+}
+
+public sealed class LocalSessionSyncResponse
+{
+    public List<LocalSessionResult> Results { get; set; } = [];
+}
+
+public sealed class LocalSessionResult
+{
+    public string Id { get; set; } = "";
+    public bool Success { get; set; }
+    public bool ProgressSynced { get; set; }
+    public string? Error { get; set; }
 }

@@ -15,7 +15,12 @@ public sealed partial class BookPage : Page
     {
         InitializeComponent();
         App.Progress.Changed += OnProgressChanged;
-        Unloaded += (_, _) => App.Progress.Changed -= OnProgressChanged;
+        App.Downloads.Changed += OnDownloadChanged;
+        Unloaded += (_, _) =>
+        {
+            App.Progress.Changed -= OnProgressChanged;
+            App.Downloads.Changed -= OnDownloadChanged;
+        };
     }
 
     public static string FormatTime(double seconds) => Format.Time(seconds);
@@ -50,6 +55,7 @@ public sealed partial class BookPage : Page
             ChaptersPanel.Visibility = _item.Media.Chapters.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
             UpdateProgress();
+            UpdateDownloadState();
             ContentRoot.Visibility = Visibility.Visible;
         }
         catch (Exception ex)
@@ -91,6 +97,73 @@ public sealed partial class BookPage : Page
         PlayButtonText.Text = !hasAudio ? "Keine Audiodateien (E-Book)"
             : !finished && current > 0 ? "Weiterhören" : "Abspielen";
         FinishedButtonText.Text = finished ? "Als nicht beendet markieren" : "Als beendet markieren";
+    }
+
+    // ---------- Download ----------
+
+    private void OnDownloadChanged(object? sender, DownloadState state)
+    {
+        if (state.ItemId == _item?.Id) DispatcherQueue.TryEnqueue(UpdateDownloadState);
+    }
+
+    private void UpdateDownloadState()
+    {
+        if (_item is null) return;
+        var hasAudio = _item.Media.AudioFiles is not { Count: 0 };
+        var state = App.Downloads.Get(_item.Id);
+        DownloadButton.IsEnabled = hasAudio;
+
+        if (state is { IsActive: true })
+        {
+            DownloadIcon.Glyph = "\uE711";
+            DownloadButtonText.Text = state.Status == DownloadStatus.Queued ? "Wartet … (abbrechen)" : $"{state.Fraction:P0} (abbrechen)";
+            DownloadProgress.Value = state.Fraction;
+            DownloadProgress.Visibility = Visibility.Visible;
+            return;
+        }
+
+        DownloadProgress.Visibility = Visibility.Collapsed;
+        if (App.Cache.IsPinned(_item.Id))
+        {
+            DownloadIcon.Glyph = "\uE73E";
+            DownloadButtonText.Text = "Heruntergeladen";
+            ToolTipService.SetToolTip(DownloadButton, "Klicken, um den Download zu entfernen");
+        }
+        else
+        {
+            DownloadIcon.Glyph = "\uE896";
+            DownloadButtonText.Text = state?.Status == DownloadStatus.Failed ? "Erneut herunterladen" : "Herunterladen";
+            ToolTipService.SetToolTip(DownloadButton, state?.Status == DownloadStatus.Failed ? state.Error : "Für die Offline-Wiedergabe herunterladen");
+        }
+    }
+
+    private async void OnDownload(object sender, RoutedEventArgs e)
+    {
+        if (_item is null) return;
+        var id = _item.Id;
+        if (App.Downloads.Get(id) is { IsActive: true })
+        {
+            App.Downloads.Cancel(id);
+            return;
+        }
+        if (App.Cache.IsPinned(id))
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Download entfernen?",
+                Content = $"„{_item.Media.Metadata.Title}“ wird von diesem Gerät gelöscht. Dein Hörfortschritt bleibt erhalten.",
+                PrimaryButtonText = "Entfernen",
+                CloseButtonText = "Abbrechen",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (App.Player.ItemId == id) await App.Player.StopAsync();
+            await Task.Run(() => App.Downloads.Remove(id));
+            UpdateDownloadState();
+            return;
+        }
+        App.Downloads.Enqueue(id, _item.Media.Metadata.Title);
     }
 
     private void OnPlay(object sender, RoutedEventArgs e)

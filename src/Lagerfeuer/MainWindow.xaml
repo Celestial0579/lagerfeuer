@@ -28,10 +28,24 @@
             </StackPanel>
         </Grid>
 
+        <StackPanel Grid.Row="1">
+        <!--  Offline-Hinweis  -->
+        <InfoBar
+            x:Name="OfflineBar"
+            Title="Offline"
+            Margin="12,0,12,8"
+            IsClosable="False"
+            IsOpen="False"
+            Message="Der Server ist nicht erreichbar. Heruntergeladene Bücher kannst du weiter hören – gehörte Zeit wird später übertragen."
+            Severity="Warning">
+            <InfoBar.ActionButton>
+                <Button x:Name="ReconnectButton" Click="OnReconnect" Content="Erneut verbinden" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <!--  Update-Hinweis (GitHub-Releases)  -->
         <InfoBar
             x:Name="UpdateBar"
-            Grid.Row="1"
             Margin="12,0,12,8"
             IsOpen="False"
             Severity="Informational">
@@ -55,6 +69,7 @@
                 </StackPanel>
             </InfoBar.Content>
         </InfoBar>
+        </StackPanel>
 
         <NavigationView
             x:Name="Nav"
@@ -69,6 +84,11 @@
                 <NavigationViewItem Content="Weiterhören" Tag="home">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE768;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="DownloadsItem" Content="Downloads" Tag="downloads">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE896;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItemHeader x:Name="LibrariesHeader" Content="Bibliotheken" />

@@ -26,8 +26,8 @@ public class CachingHttpStreamTests : IDisposable
 
     private static async Task WaitUntilCompleteAsync(CachingHttpStream stream)
     {
-        for (var i = 0; i < 200 && !stream.IsComplete; i++) await Task.Delay(25, TestContext.Current.CancellationToken);
-        Assert.True(stream.IsComplete, "Datei wurde nicht vollständig gecacht.");
+        for (var i = 0; i < 200 && !stream.IsPersisted; i++) await Task.Delay(25, TestContext.Current.CancellationToken);
+        Assert.True(stream.IsPersisted, "Datei wurde nicht vollständig gecacht.");
     }
 
     [Fact]

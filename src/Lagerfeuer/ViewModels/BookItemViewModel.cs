@@ -23,6 +23,7 @@ public sealed partial class BookItemViewModel : ObservableObject
     [ObservableProperty] public partial double ProgressPercent { get; set; }
     [ObservableProperty] public partial bool HasProgress { get; set; }
     [ObservableProperty] public partial bool IsFinished { get; set; }
+    [ObservableProperty] public partial bool IsDownloaded { get; set; }
 
     public void RefreshProgress()
     {
@@ -30,6 +31,7 @@ public sealed partial class BookItemViewModel : ObservableObject
         IsFinished = p?.IsFinished ?? false;
         ProgressPercent = IsFinished ? 100 : (p?.Progress ?? 0) * 100;
         HasProgress = ProgressPercent > 0;
+        IsDownloaded = App.Cache.IsPinned(Item.Id);
     }
 }
 

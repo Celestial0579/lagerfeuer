@@ -11,7 +11,12 @@ public partial class App : Application
     public static AbsApiClient Api { get; } = new();
     public static CacheManager Cache { get; } = new(Api, AppPaths.Cache);
     public static CoverCache Covers { get; } = new(Api, AppPaths.Covers);
-    public static ProgressStore Progress { get; } = new();
+    public static ProgressStore Progress { get; } = new(Path.Combine(AppPaths.Root, "progress.json"));
+    public static LocalSessionStore LocalSessions { get; } = new(Path.Combine(AppPaths.Root, "offline-sessions.json"));
+    public static DownloadManager Downloads { get; } = new(Api, Cache, Covers);
+
+    /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
+    public static bool IsOffline { get; set; }
     public static PlayerService Player { get; private set; } = null!;
     public static MainWindow MainWindow { get; private set; } = null!;
 
@@ -66,48 +71,35 @@ public partial class App : Application
         if (callbackUrl is not null) Log.Info("Mit SSO-Callback gestartet, aber keine Anmeldung aktiv – ignoriert.");
         UpdateService.CleanupAfterUpdate();
 
-        Player = new PlayerService(Api, Cache, Covers, Settings, dispatcher);
+        Player = new PlayerService(Api, Cache, Covers, Settings, LocalSessions, Progress, dispatcher);
         Player.ProgressSynced += (_, p) => Progress.Update(p.ItemId, p.CurrentTime, p.Duration);
+        Player.LocalSessionEnded += (_, _) => { if (!IsOffline) _ = UploadOfflineSessionsAsync(); };
         MainWindow = new MainWindow();
         MainWindow.Activate();
+    }
+
+    /// <summary>Lädt offline gehörte Sessions zum Server hoch (still; bei Fehlern beim nächsten Mal).</summary>
+    public static async Task UploadOfflineSessionsAsync()
+    {
+        try
+        {
+            if (LocalSessions.Pending.Count == 0) return;
+            var count = await LocalSessions.SyncAsync(Api, Settings.DeviceId);
+            if (count > 0)
+            {
+                Log.Info($"{count} Offline-Session(s) hochgeladen.");
+                Progress.Reset(await Api.GetAllProgressAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Offline-Sessions konnten nicht hochgeladen werden", ex);
+        }
     }
 
     private static void OnActivationMessage(string message)
     {
         if (ProtocolRegistration.IsCallback(message)) OpenIdLogin.OnCallback(message);
         MainWindow?.BringToFront();
-    }
-}
-
-/// <summary>Hält den Hörfortschritt des Benutzers für Fortschrittsbalken in der Bibliothek.</summary>
-public sealed class ProgressStore
-{
-    private readonly Dictionary<string, MediaProgress> _byItem = new();
-
-    public event EventHandler<string>? Changed;
-
-    public void Reset(IEnumerable<MediaProgress> progress)
-    {
-        _byItem.Clear();
-        foreach (var p in progress.Where(p => p.EpisodeId is null)) _byItem[p.LibraryItemId] = p;
-    }
-
-    public MediaProgress? Get(string itemId) => _byItem.GetValueOrDefault(itemId);
-
-    public void Set(MediaProgress progress)
-    {
-        _byItem[progress.LibraryItemId] = progress;
-        Changed?.Invoke(this, progress.LibraryItemId);
-    }
-
-    public void Update(string itemId, double currentTime, double duration)
-    {
-        var p = _byItem.GetValueOrDefault(itemId) ?? new MediaProgress { LibraryItemId = itemId };
-        p.CurrentTime = currentTime;
-        p.Duration = duration;
-        p.Progress = duration > 0 ? Math.Clamp(currentTime / duration, 0, 1) : 0;
-        if (duration > 0 && currentTime >= duration - 1) p.IsFinished = true;
-        _byItem[itemId] = p;
-        Changed?.Invoke(this, itemId);
     }
 }

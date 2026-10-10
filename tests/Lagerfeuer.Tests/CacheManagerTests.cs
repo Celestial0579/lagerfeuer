@@ -57,16 +57,75 @@ public class CacheManagerTests : IDisposable
     }
 
     [Fact]
-    public void SessionMetadaten_WerdenFuerOfflineGespeichert()
+    public void LokaleBuchdaten_WerdenGespeichertUndGelistet()
     {
-        var session = new PlaybackSession { Id = "s1", LibraryItemId = "item9", DisplayTitle = "Titel", Chapters = [new Chapter { Id = 0, Start = 0, End = 60, Title = "Eins" }] };
+        var item = new LocalItem { LibraryItemId = "item9", Title = "Zweites", Chapters = [new Chapter { Id = 0, Start = 0, End = 60, Title = "Eins" }] };
+        Cache.SaveLocalItem(item);
+        Cache.SaveLocalItem(new LocalItem { LibraryItemId = "item1", Title = "Erstes" });
 
-        Cache.SaveSessionMetadata(session);
-
-        var json = File.ReadAllText(Path.Combine(_dir.Path, "item9", "session.json"));
-        Assert.Contains("\"Eins\"", json);
+        var loaded = Cache.GetLocalItem("item9");
+        Assert.Equal("Eins", Assert.Single(loaded!.Chapters).Title);
+        Assert.Equal(["Erstes", "Zweites"], Cache.ListLocalItems().Select(i => i.Title));
+        Assert.Null(Cache.GetLocalItem("unbekannt"));
     }
 
+    [Fact]
+    public void AngehefteteBuecher_UeberlebenDieBereinigung()
+    {
+        CreateItem("download", 5000, DateTime.UtcNow.AddDays(-30));
+        CreateItem("gestreamt", 5000, DateTime.UtcNow.AddDays(-1));
+        Cache.SetPinned("download", true);
+
+        Cache.Clear([]);
+
+        Assert.True(Directory.Exists(Path.Combine(_dir.Path, "download")));
+        Assert.False(Directory.Exists(Path.Combine(_dir.Path, "gestreamt")));
+        Assert.True(Cache.IsPinned("download"));
+
+        Cache.SetPinned("download", false);
+        Assert.False(Cache.IsPinned("download"));
+    }
+
+    [Fact]
+    public void CacheSchluessel_IstUnabhaengigVomServerUnterpfad()
+    {
+        var mitUnterpfad = Cache.GetTrackPath("i", Track(1, "/abs/api/items/i/file/5", ".mp3"));
+        var ohne = Cache.GetTrackPath("i", Track(1, "/api/items/i/file/5", ".mp3"));
+        Assert.Equal(mitUnterpfad, ohne);
+    }
+
+    [Fact]
+    public async Task OfflineVerfuegbar_ErstWennAlleTracksKomplettSind()
+    {
+        var audio = new byte[CachingHttpStream.ChunkSize + 100];
+        var server = new RangeFileServer(audio);
+        using var api = new AbsApiClient(server.Handler);
+        api.Configure(new Uri("https://abs.test/"), server.Token, null);
+        var cache = new CacheManager(api, _dir.Path);
+        var item = new LocalItem
+        {
+            LibraryItemId = "buch",
+            Tracks = [Track(1, "/api/items/buch/file/1", ".mp3"), Track(2, "/api/items/buch/file/2", ".mp3")],
+        };
+        item.Tracks[0].Duration = item.Tracks[1].Duration = 100;
+
+        Assert.False(cache.IsAvailableOffline(item));
+        Assert.Equal(0, cache.GetLocalFraction(item));
+
+        await DownloadCompletelyAsync(cache, item, item.Tracks[0]);
+        Assert.False(cache.IsAvailableOffline(item));
+        Assert.Equal(0.5, cache.GetLocalFraction(item), 3);
+
+        await DownloadCompletelyAsync(cache, item, item.Tracks[1]);
+        Assert.True(cache.IsAvailableOffline(item));
+    }
+
+    private static async Task DownloadCompletelyAsync(CacheManager cache, LocalItem item, AudioTrack track)
+    {
+        await using var stream = await cache.OpenTrackAsync(item.LibraryItemId, track, TestContext.Current.CancellationToken);
+        for (var i = 0; i < 200 && !stream.IsPersisted; i++) await Task.Delay(25, TestContext.Current.CancellationToken);
+        Assert.True(stream.IsPersisted);
+    }
     private void CreateItem(string id, int bytes, DateTime lastUse)
     {
         var dir = Directory.CreateDirectory(Path.Combine(_dir.Path, id));
