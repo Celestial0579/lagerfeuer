@@ -330,7 +330,131 @@ public sealed class UpdateService
         {
             // z.B. alte EXE noch kurz gesperrt – beim nächsten Start erneut
         }
+
+        // Nur die portable EXE entpackt sich. Im Hintergrund, damit der Start nicht darauf wartet.
+        if (IsPortable)
+            _ = Task.Run(() => RemoveStaleExtractions(AppAssembly.Location, Environment.ProcessPath, Path.GetTempPath()));
     }
+
+    /// <summary>Endung eines Entpackordners, der geprüft, umbenannt und zum Löschen vorgesehen ist.</summary>
+    private const string RemovalSuffix = ".entfernen";
+
+    /// <summary>
+    /// Löscht die Entpackordner früherer Fassungen derselben portablen EXE. Sie entpackt sich nach
+    /// %TEMP%\.net\&lt;Name der EXE&gt;\&lt;Kennung&gt;, jede Fassung in einen eigenen Ordner von rund 150 MB.
+    /// Nach einem Update bliebe der Ordner der vorigen Fassung sonst für immer liegen.
+    ///
+    /// Die App löscht hier Ordner, deshalb gilt: Gelöscht wird nur, was alle Bedingungen erfüllt. Im Zweifel
+    /// bleibt es liegen.
+    /// <list type="bullet">
+    /// <item>Der eigene Entpackordner liegt dort, wo .NET ihn anlegt: %TEMP%\.net\&lt;Name der laufenden EXE&gt;\&lt;Kennung&gt;.
+    /// Ein anderer Ort, auch ein über DOTNET_BUNDLE_EXTRACT_BASE_DIR verlegter, wird nicht angefasst. Die
+    /// installierte Fassung erfüllt das nie.</item>
+    /// <item>Der Kandidat ist ein direkter Nachbar des eigenen Ordners, heißt wie eine Kennung und enthält die
+    /// Programmbibliothek, aber keinen Starter. Der eigene Ordner ist nie Kandidat.</item>
+    /// <item>Weder der Kandidat noch irgendetwas darin ist eine Verknüpfung (Junction, Symlink). Verknüpfungen
+    /// werden nicht verfolgt und nicht gelöscht.</item>
+    /// <item>Der Kandidat lässt sich umbenennen. Solange eine andere Instanz daraus läuft, geht das nicht; dann
+    /// bleibt er unberührt und ohne Meldung liegen. Gelöscht wird erst der umbenannte Ordner, nie ein benutzter.</item>
+    /// </list>
+    /// Entpackordner enthalten nur Programmdateien. Fehlt einer, entpackt sich die zugehörige EXE beim nächsten
+    /// Start neu.
+    /// </summary>
+    /// <param name="ownLibrary">Pfad der geladenen Programmbibliothek (<see cref="Assembly.Location"/>).</param>
+    /// <param name="processPath">Pfad der EXE des Prozesses (<see cref="Environment.ProcessPath"/>).</param>
+    /// <param name="tempPath">Temp-Ordner des Kontos (<see cref="Path.GetTempPath"/>).</param>
+    /// <param name="moveDirectory">Für Tests: ersetzt <see cref="Directory.Move(string, string)"/>.</param>
+    /// <returns>Zahl der gelöschten Ordner.</returns>
+    internal static int RemoveStaleExtractions(string? ownLibrary, string? processPath, string tempPath,
+        Action<string, string>? moveDirectory = null)
+    {
+        var removed = 0;
+        try
+        {
+            if (string.IsNullOrEmpty(ownLibrary) || string.IsNullOrEmpty(processPath)) return 0;
+            moveDirectory ??= Directory.Move;
+
+            var library = Path.GetFileName(ownLibrary);
+            var own = new FileInfo(ownLibrary).Directory;  // %TEMP%\.net\<Name der EXE>\<Kennung>
+            var app = own?.Parent;                         // %TEMP%\.net\<Name der EXE>
+            var root = app?.Parent;                        // %TEMP%\.net
+            if (own is null || app is null || root is null) return 0;
+
+            // Liegt alles da, wo .NET die laufende EXE entpackt? Sonst verstehen wir die Lage nicht und löschen nichts.
+            if (!SamePath(root.FullName, Path.Combine(tempPath, ".net"))) return 0;
+            if (!string.Equals(app.Name, Path.GetFileNameWithoutExtension(processPath), StringComparison.OrdinalIgnoreCase)) return 0;
+            if (!IsBundleId(own.Name) || !HasLibraryWithoutStarter(own, library)) return 0;
+            if (IsLink(root) || IsLink(app) || IsLink(own)) return 0;
+
+            foreach (var candidate in app.EnumerateDirectories())
+            {
+                try
+                {
+                    if (SamePath(candidate.FullName, own.FullName) || IsLink(candidate)) continue;
+
+                    string doomed;
+                    if (candidate.Name.EndsWith(RemovalSuffix, StringComparison.Ordinal)
+                        && IsBundleId(candidate.Name[..^RemovalSuffix.Length]))
+                    {
+                        // Rest eines früheren Laufs: schon geprüft und umbenannt, das Löschen kam nicht zu Ende.
+                        doomed = candidate.FullName;
+                    }
+                    else
+                    {
+                        if (!IsBundleId(candidate.Name) || !HasLibraryWithoutStarter(candidate, library)) continue;
+                        if (ContainsLink(candidate)) continue;
+                        doomed = candidate.FullName + RemovalSuffix;
+                        if (Directory.Exists(doomed) || File.Exists(doomed)) continue;
+                        // Scheitert, solange eine Datei darin geöffnet ist: Dann läuft noch eine Instanz daraus.
+                        moveDirectory(candidate.FullName, doomed);
+                    }
+
+                    if (ContainsLink(new DirectoryInfo(doomed))) continue;
+                    Directory.Delete(doomed, recursive: true);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // In Benutzung oder gesperrt: bleibt liegen, beim nächsten Start erneut.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Entpackordner früherer Fassungen ließen sich nicht aufräumen", ex);
+        }
+
+        if (removed > 0) Log.Info($"Entpackordner früherer Fassungen entfernt: {removed}");
+        return removed;
+    }
+
+    /// <summary>So heißen die Entpackordner: zwölf Zeichen aus Buchstaben, Ziffern, „-“ und „_“.</summary>
+    private static bool IsBundleId(string name)
+        => name.Length == 12 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    /// <summary>Wie in <see cref="IsSingleFileExe"/>: Im Entpackordner liegt die Bibliothek ohne ihren Starter.</summary>
+    private static bool HasLibraryWithoutStarter(DirectoryInfo directory, string library)
+        => File.Exists(Path.Combine(directory.FullName, library))
+           && !File.Exists(Path.Combine(directory.FullName, Path.ChangeExtension(library, ".exe")));
+
+    private static bool IsLink(FileSystemInfo entry) => (entry.Attributes & FileAttributes.ReparsePoint) != 0;
+
+    /// <summary>Liegt irgendwo im Ordner eine Verknüpfung? Geht Ebene für Ebene vor und folgt selbst keiner.</summary>
+    private static bool ContainsLink(DirectoryInfo directory)
+    {
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (IsLink(entry)) return true;
+            if (entry is DirectoryInfo sub && ContainsLink(sub)) return true;
+        }
+        return false;
+    }
+
+    private static bool SamePath(string a, string b)
+        => string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)),
+            StringComparison.OrdinalIgnoreCase);
 
     internal static bool TryParseVersion(string? tag, out Version version)
     {

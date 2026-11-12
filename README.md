@@ -22,7 +22,7 @@ Unter [Releases](https://github.com/Celestial0579/lagerfeuer/releases) gibt es p
 | Datei | Beschreibung |
 |---|---|
 | `Lagerfeuer-<ver>-win-x64-setup.exe` | **Installer** (empfohlen). Installiert pro Benutzer nach `%LOCALAPPDATA%\Programs\Lagerfeuer`, ohne Adminrechte. Legt Startmenü- und optional Desktop-Verknüpfung an und erscheint unter „Apps & Features“. |
-| `Lagerfeuer-<ver>-win-x64.exe` | **Portable EXE**. Eine einzelne Datei, die .NET und Windows App SDK enthält. Beim ersten Start entpackt sie sich einmalig nach `%TEMP%\.net`. |
+| `Lagerfeuer-<ver>-win-x64.exe` | **Portable EXE**. Eine einzelne Datei, die .NET und Windows App SDK enthält. Beim ersten Start entpackt sie sich einmalig nach `%TEMP%\.net`. Nach einem Update räumt sie dort den entpackten Stand der vorigen Fassung weg. |
 
 Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
 
@@ -120,7 +120,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
 - **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
-- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg.
+- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
 
 ```bash
