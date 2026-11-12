@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Lagerfeuer.Services;
 
@@ -69,8 +70,9 @@ public sealed class UpdateService
         if (release is null || release.Draft || release.Prerelease) return null;
         if (!TryParseVersion(release.TagName, out var version) || version <= _current) return null;
 
-        var asset = release.Assets.FirstOrDefault(a => a.Name.EndsWith(
-            _portable ? $"-{_rid}.exe" : $"-{_rid}-setup.exe", StringComparison.OrdinalIgnoreCase));
+        // Nur eine Datei, die genau so heißt, wie build/publish.ps1 sie für diese Variante und Architektur nennt.
+        // Alles andere im Release wird nicht angeboten, auch wenn es auf dieselbe Endung hört.
+        var asset = release.Assets.FirstOrDefault(a => IsExpectedAssetName(a.Name, _portable, _rid));
 
         return new UpdateInfo(version, release.Name is { Length: > 0 } n ? n : release.TagName, release.HtmlUrl,
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
@@ -80,9 +82,14 @@ public sealed class UpdateService
     public async Task<string> DownloadAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct = default)
     {
         // Portabel: neben die laufende EXE (gleiches Laufwerk → atomares Umbenennen möglich).
-        var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, asset.Name)
+        // Der Dateiname stammt aus der Antwort der GitHub-API und geht in den Zielpfad ein. Er muss ein reiner
+        // Dateiname nach dem Muster der Release-Dateien sein, sonst wird nichts geladen und nichts geschrieben.
+        if (!IsExpectedAssetName(asset.Name, _portable, _rid))
+            throw new InvalidOperationException("Der Dateiname des Updates ist unerwartet – es wird nicht geladen.");
+        var name = Path.GetFileName(asset.Name);
+        var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, name)
             : _portable ? Environment.ProcessPath + ".new"
-            : Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update", asset.Name);
+            : Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update", name);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
         using var resp = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -165,6 +172,17 @@ public sealed class UpdateService
         version = Normalize(v);
         return true;
     }
+
+    /// <summary>
+    /// Heißt die Datei so, wie build/publish.ps1 die Release-Dateien dieser Variante und Architektur nennt:
+    /// „Lagerfeuer-&lt;Version&gt;-win-x64-setup.exe“ für die installierte, „Lagerfeuer-&lt;Version&gt;-win-x64.exe“
+    /// für die portable Fassung? Als Version zählen nur Ziffern und Punkte. Damit scheiden Pfadtrenner,
+    /// Laufwerksangaben und angehängte Endungen von selbst aus.
+    /// </summary>
+    internal static bool IsExpectedAssetName(string? name, bool portable, string rid)
+        => name is not null && Regex.IsMatch(name,
+            $@"\ALagerfeuer-[0-9]+(\.[0-9]+){{1,3}}-{Regex.Escape(rid)}{(portable ? "" : "-setup")}\.exe\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static Version Normalize(Version v) => new(v.Major, Math.Max(0, v.Minor), Math.Max(0, v.Build));
 
