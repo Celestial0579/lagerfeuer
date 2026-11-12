@@ -17,6 +17,7 @@ namespace Lagerfeuer.Services;
 ///   Lagerfeuer-&lt;ver&gt;-win-x64-setup.exe   → installierte Version: Setup still mit /S /RESTART ausführen
 ///   Lagerfeuer-&lt;ver&gt;-win-x64.exe         → portable Version: laufende EXE austauschen und neu starten
 /// Die SHA-256-Prüfsumme, die GitHub für jedes Asset liefert, wird vor dem Ausführen geprüft.
+/// Liefert GitHub keine, wird nichts geladen und nichts gestartet.
 /// </summary>
 public sealed class UpdateService
 {
@@ -76,9 +77,17 @@ public sealed class UpdateService
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
     }
 
-    /// <summary>Lädt das Update herunter und prüft die Prüfsumme. Gibt den lokalen Pfad zurück.</summary>
+    /// <summary>
+    /// Lädt das Update herunter und prüft die Prüfsumme. Gibt den lokalen Pfad zurück.
+    /// Ohne Prüfsumme wird gar nicht erst geladen: Was sich nicht prüfen lässt, wird auch nicht gestartet.
+    /// </summary>
     public async Task<string> DownloadAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct = default)
     {
+        if (asset.Sha256 is not { } expected || !IsSha256(expected))
+            throw new InvalidOperationException(
+                "Für diese Version liefert GitHub keine Prüfsumme. Ohne Prüfung installiert Lagerfeuer nichts – " +
+                "du findest die Datei auf der Release-Seite.");
+
         // Portabel: neben die laufende EXE (gleiches Laufwerk → atomares Umbenennen möglich).
         var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, asset.Name)
             : _portable ? Environment.ProcessPath + ".new"
@@ -106,7 +115,7 @@ public sealed class UpdateService
             sha.TransformFinalBlock([], 0, 0);
         }
 
-        if (asset.Sha256 is { } expected && !Convert.ToHexString(sha.Hash!).Equals(expected, StringComparison.OrdinalIgnoreCase))
+        if (!Convert.ToHexString(sha.Hash!).Equals(expected, StringComparison.OrdinalIgnoreCase))
         {
             File.Delete(target);
             throw new InvalidOperationException("Die Prüfsumme des Updates stimmt nicht – Download verworfen.");
@@ -117,15 +126,23 @@ public sealed class UpdateService
     /// <summary>Startet die Installation des heruntergeladenen Updates. Danach muss sich die App beenden.</summary>
     public void LaunchInstaller(string downloadedFile)
     {
-        if (IsPortable)
+        // Wie CheckAsync und DownloadAsync nach der Variante dieser Instanz, nicht nach der statischen Eigenschaft.
+        if (_portable)
         {
-            // Eine laufende EXE darf umbenannt, aber nicht überschrieben werden.
             var exe = Environment.ProcessPath!;
-            var old = exe + ".old";
-            File.Delete(old);
-            File.Move(exe, old);
-            File.Move(downloadedFile, exe);
-            Process.Start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
+            ReplaceExecutable(exe, downloadedFile);
+            try
+            {
+                Process.Start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                // Die neue EXE liegt schon am Platz, startet aber nicht: zurück zur bisherigen.
+                // Scheitert auch das, meldet RestoreExecutable selbst, wo die bisherige liegt.
+                RestoreExecutable(exe);
+                throw new InvalidOperationException(
+                    $"Die neue Version ließ sich nicht starten – Lagerfeuer bleibt bei der bisherigen. ({ex.Message})", ex);
+            }
         }
         else
         {
@@ -134,6 +151,76 @@ public sealed class UpdateService
         }
         Log.Info($"Update gestartet: {downloadedFile}");
     }
+
+    /// <summary>
+    /// Tauscht die portable EXE gegen die heruntergeladene Fassung. Die bisherige wird zu „…exe.old“
+    /// (eine laufende EXE darf umbenannt, aber nicht überschrieben werden), die neue rückt an ihren Platz.
+    /// Scheitert der zweite Schritt, wird der erste rückgängig gemacht: Am ursprünglichen Pfad liegt danach
+    /// wieder die bisherige EXE – oder die Meldung sagt, wo sie liegt.
+    /// </summary>
+    /// <param name="exe">Pfad der laufenden EXE.</param>
+    /// <param name="downloadedFile">Pfad der geprüften neuen Fassung.</param>
+    /// <param name="move">Für Tests: ersetzt <see cref="File.Move(string, string, bool)"/>.</param>
+    internal static void ReplaceExecutable(string exe, string downloadedFile, Action<string, string, bool>? move = null)
+    {
+        move ??= File.Move;
+        var old = exe + ".old";
+
+        // Prüfen, solange noch nichts angefasst ist (z.B. Download inzwischen vom Virenscanner entfernt).
+        if (!File.Exists(downloadedFile))
+            throw new InvalidOperationException("Die heruntergeladene Datei ist nicht mehr da – das Update wurde nicht eingespielt.");
+
+        try
+        {
+            File.Delete(old); // Rest vom vorigen Update
+            move(exe, old, false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Die laufende EXE ließ sich nicht umbenennen – das Update wurde nicht eingespielt. ({ex.Message})", ex);
+        }
+
+        try
+        {
+            move(downloadedFile, exe, false);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                move(old, exe, true);
+            }
+            catch (Exception rollback)
+            {
+                throw new InvalidOperationException(StrandedMessage(exe, old), new AggregateException(ex, rollback));
+            }
+            throw new InvalidOperationException(
+                $"Das Update ließ sich nicht einspielen – Lagerfeuer bleibt bei der bisherigen Version. ({ex.Message})", ex);
+        }
+    }
+
+    /// <summary>
+    /// Macht <see cref="ReplaceExecutable"/> rückgängig: Die bisherige EXE („…exe.old“) kommt zurück an ihren
+    /// Platz, die neue wird dabei verworfen.
+    /// </summary>
+    internal static void RestoreExecutable(string exe, Action<string, string, bool>? move = null)
+    {
+        move ??= File.Move;
+        var old = exe + ".old";
+        try
+        {
+            move(old, exe, true);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(StrandedMessage(exe, old), ex);
+        }
+    }
+
+    private static string StrandedMessage(string exe, string old)
+        => "Das Update ist gescheitert, und die bisherige Version ließ sich nicht an ihren Platz zurücklegen. " +
+           $"Sie liegt unter „{old}“ – benenne sie von Hand wieder in „{Path.GetFileName(exe)}“ um.";
 
     /// <summary>Räumt Reste eines vorherigen Updates auf (beim Start aufrufen).</summary>
     public static void CleanupAfterUpdate()
@@ -168,8 +255,19 @@ public sealed class UpdateService
 
     private static Version Normalize(Version v) => new(v.Major, Math.Max(0, v.Minor), Math.Max(0, v.Build));
 
-    private static string? ParseDigest(string? digest)
-        => digest is not null && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) ? digest[7..] : null;
+    /// <summary>
+    /// GitHub liefert die Prüfsumme als „sha256:&lt;64 Hex-Zeichen&gt;“. Alles andere (fehlend, anderes Verfahren,
+    /// verstümmelt) gilt als „keine Prüfsumme“ – und dann wird nichts installiert, siehe <see cref="DownloadAsync"/>.
+    /// </summary>
+    internal static string? ParseDigest(string? digest)
+    {
+        const string prefix = "sha256:";
+        if (digest is null || !digest.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+        var hex = digest[prefix.Length..];
+        return IsSha256(hex) ? hex : null;
+    }
+
+    private static bool IsSha256(string value) => value.Length == 64 && value.All(char.IsAsciiHexDigit);
 
     private static HttpClient CreateClient()
     {
