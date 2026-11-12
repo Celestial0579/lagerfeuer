@@ -99,7 +99,12 @@ public sealed partial class MainWindow : Window
 
     private void ShowUpdate(UpdateInfo update)
     {
+        // Läuft gerade ein Update, bleibt dessen Anzeige (Meldung, Fortschritt) stehen.
+        if (_installingUpdate) return;
         _availableUpdate = update;
+        // Ein früherer Fehlschlag bleibt an einem neuen Hinweis nicht hängen.
+        UpdateBar.Severity = InfoBarSeverity.Informational;
+        UpdateButton.Content = "Jetzt aktualisieren";
         UpdateBar.Title = $"Lagerfeuer {update.Version.ToString(3)} ist verfügbar";
         UpdateBar.Message = $"Du verwendest Version {UpdateService.CurrentVersion.ToString(3)}.";
         ReleaseNotesLink.NavigateUri = new Uri(update.ReleaseUrl);
@@ -122,6 +127,9 @@ public sealed partial class MainWindow : Window
         if (_availableUpdate?.Asset is not { } asset || _installingUpdate) return;
         _installingUpdate = true;
         UpdateButton.IsEnabled = SkipUpdateLink.IsEnabled = false;
+        // Ein neuer Versuch beginnt ohne den Fehler vom letzten.
+        UpdateBar.Severity = InfoBarSeverity.Informational;
+        UpdateButton.Content = "Jetzt aktualisieren";
         UpdateProgress.Value = 0;
         UpdateProgress.Visibility = Visibility.Visible;
         UpdateBar.Message = "Update wird heruntergeladen …";
@@ -131,10 +139,18 @@ public sealed partial class MainWindow : Window
             var file = await _updates.DownloadAsync(asset, progress);
 
             UpdateBar.Message = "Update wird installiert – Lagerfeuer startet gleich neu …";
-            await Player.ShutdownAsync();
-            _updates.LaunchInstaller(file);
-            _shutdownDone = true;
-            Application.Current.Exit();
+            // Der Start des Updates hält die Oberfläche an, bei einer frisch geladenen EXE auch einige Sekunden.
+            // Vorher kurz abgeben, damit diese Meldung schon gezeichnet ist und nicht die vom Download stehen bleibt.
+            await Task.Delay(100);
+            // Erst starten, dann herunterfahren: Scheitert der Start, läuft die App samt Wiedergabe weiter.
+            await UpdateInstallation.RunAsync(
+                launch: () => _updates.LaunchInstaller(file),
+                shutdownAsync: Player.ShutdownAsync,
+                exit: () =>
+                {
+                    _shutdownDone = true;
+                    Application.Current.Exit();
+                });
         }
         catch (Exception ex)
         {
@@ -142,6 +158,8 @@ public sealed partial class MainWindow : Window
             UpdateBar.Severity = InfoBarSeverity.Error;
             UpdateBar.Message = $"Update fehlgeschlagen: {ex.Message}";
             UpdateProgress.Visibility = Visibility.Collapsed;
+            // Nichts ist heruntergefahren: Der Versuch lässt sich ohne Neustart wiederholen.
+            UpdateButton.Content = "Erneut versuchen";
             UpdateButton.IsEnabled = SkipUpdateLink.IsEnabled = true;
             _installingUpdate = false;
         }
