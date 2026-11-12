@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- Gilt für alle Projekte im Repository (src/ und tests/).
+
+       GitHubs „Automatic Dependency Submission (NuGet)“ stellt die Projekte auf einem Linux-Runner wieder her,
+       um den Abhängigkeitsgraphen für die Sicherheitsalarme zu füllen. Ohne diese Eigenschaft bricht
+       `dotnet restore` dort bei src/Lagerfeuer/Lagerfeuer.csproj mit NETSDK1100 ab (Windows-Zielframework
+       auf einem anderen Betriebssystem). Die Folge sind ein rotes Kreuz am Hauptzweig und fehlende
+       indirekte NuGet-Abhängigkeiten im Sicherheitsabgleich.
+
+       Die Bedingung beschränkt die Eigenschaft auf Nicht-Windows-Systeme. Unter Windows, also bei jedem
+       echten Build, in der CI und beim Release, bleibt sie ungesetzt und die Auswertung unverändert. -->
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>
