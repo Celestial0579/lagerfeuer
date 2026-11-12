@@ -233,7 +233,16 @@ public sealed partial class SettingsPage : Page
 
     private void OnOpenFolder(object sender, RoutedEventArgs e)
     {
-        Directory.CreateDirectory(AppPaths.Cache);
-        Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.Cache) { UseShellExecute = true });
+        try
+        {
+            Directory.CreateDirectory(AppPaths.Cache);
+            // Den Explorer mit vollem Pfad und ohne die Shell starten (siehe SystemPrograms).
+            Process.Start(SystemPrograms.OpenFolder(AppPaths.Cache));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Ordner konnte nicht geöffnet werden", ex);
+            App.MainWindow.ShowError("Der Ordner ließ sich nicht öffnen (Details im Log).");
+        }
     }
 }

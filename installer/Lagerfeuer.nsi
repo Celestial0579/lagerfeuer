@@ -117,11 +117,15 @@ Var Restart
 
 ; Wartet, bis Lagerfeuer beendet ist (Dateien wären sonst gesperrt).
 ; Beim Update (/RESTART) beendet sich die App gerade selbst → bis zu 15 s still warten.
+;
+; Hilfsprogramme von Windows immer mit vollem Pfad aus dem Systemordner. Beim bloßen Namen sucht Windows zuerst
+; im Ordner des Setups und im aktuellen Ordner, und dort kann ein fremdes Programm gleichen Namens liegen.
+; Zur Schreibweise: cmd /C entfernt das erste und das letzte Anführungszeichen des Befehls, der Rest bleibt.
 !macro CLOSE_APP_FUNC un
 Function ${un}CloseRunningApp
   StrCpy $R8 0
   retry:
-    nsExec::ExecToStack 'cmd.exe /C tasklist /FI "IMAGENAME eq ${EXENAME}" /NH | find /I "${EXENAME}"'
+    nsExec::ExecToStack '"$SYSDIR\cmd.exe" /C ""$SYSDIR\tasklist.exe" /FI "IMAGENAME eq ${EXENAME}" /NH | "$SYSDIR\find.exe" /I "${EXENAME}""'
     Pop $0
     Pop $1
     ${If} $0 == 0
@@ -146,7 +150,15 @@ Function LaunchApp
   Exec '"$WINDIR\explorer.exe" "$INSTDIR\${EXENAME}"'
 FunctionEnd
 
+; Arbeitsordner auf den Systemordner stellen. Nach einem Doppelklick ist es der Ordner der Setup-Datei, und alles,
+; was das Setup startet, erbte ihn samt dem, was dort sonst noch liegt.
+!macro WORKDIR_SYSTEM
+  SetOutPath "$SYSDIR"
+!macroend
+
 Function .onInit
+  !insertmacro WORKDIR_SYSTEM
+
   ${IfNot} ${AtLeastWin10}
     MessageBox MB_OK|MB_ICONSTOP "Lagerfeuer benötigt Windows 10 (Version 1809) oder neuer." /SD IDOK
     Abort
@@ -171,6 +183,10 @@ Function .onInit
   ${IfNot} ${Errors}
     StrCpy $Restart 1
   ${EndIf}
+FunctionEnd
+
+Function un.onInit
+  !insertmacro WORKDIR_SYSTEM
 FunctionEnd
 
 Function .onInstSuccess

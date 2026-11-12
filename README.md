@@ -128,12 +128,19 @@ Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 ge
 - **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner, Start im Hintergrund, einmaliges Herunterfahren, Schließen des Fensters während des Starts.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
 - **Meldungen bei Verbindungsfehlern:** kein HTTPS, Zertifikat, unbekannter Name, abgelehnte Verbindung, Zeitüberschreitung, kein Audiobookshelf-Server.
+- **Programme von Windows:** Der Explorer wird mit vollem Pfad und ohne die Shell gestartet; im Quelltext nennt kein Aufruf ein Programm nur beim Namen.
 
 ```bash
 dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj
 ```
 
 Auf GitHub laufen die Tests bei jedem Push und Pull Request ([`ci.yml`](.github/workflows/ci.yml)) sowie vor jedem Release.
+
+Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests/installer/Test-Installer.ps1), in der CI der Job „Setup-Prüfung“). Sie baut aus `installer/Lagerfeuer.nsi` ein Probe-Setup mit winziger Nutzlast und stellt sicher, dass Setup und Deinstallation keine fremden Programme starten, die neben ihnen liegen, und dass sie abbrechen, solange Lagerfeuer läuft. Sie braucht Windows und NSIS; für die Gegenprobe lädt sie das veröffentlichte Setup über `gh` (ohne Netz: `-SkipOld`):
+
+```powershell
+./tests/installer/Test-Installer.ps1
+```
 
 ### Release veröffentlichen
 
