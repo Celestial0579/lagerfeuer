@@ -28,7 +28,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
 
 > **Portable EXE bis 0.2.1:** Sie hält sich beim Update für eine Installation, lädt das Setup und installiert Lagerfeuer zusätzlich nach `%LOCALAPPDATA%\Programs\Lagerfeuer`. Wenn du portabel bleiben willst, lade die nächste portable EXE einmal von Hand von der Release-Seite. Neuere Fassungen tauschen sich selbst aus.
 
-> Solange kein Code-Signing-Zertifikat eingebunden ist, sind die Dateien nicht signiert. Windows SmartScreen warnt dann beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“).
+> Die Dateien sind bisher nicht signiert. Windows SmartScreen warnt deshalb beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“). Eine Signatur wird vorbereitet.
 
 ## Funktionen
 
@@ -176,8 +176,11 @@ build/                  publish.ps1 (EXE, Installer, Signieren), make-art.ps1 (G
 
 Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung.
 
-Vorbereitet, braucht noch eine Entscheidung bzw. ein Zertifikat:
-- **Code-Signing:** `build/publish.ps1` signiert App, portable EXE, Setup und Deinstaller, sobald ein Zertifikat angegeben ist. Das geht per `-CertificateThumbprint` oder `-CertificatePath`. In GitHub Actions hinterlegst du dafür die Secrets `SIGNING_CERT_PFX_BASE64` und `SIGNING_CERT_PASSWORD`.
+Vorbereitet, braucht noch eine Entscheidung:
+- **Code-Signing:** Signiert wird noch nicht.
+  - `build/publish.ps1` kann App, portable EXE, Setup und Deinstaller signieren, wenn am Baurechner ein Zertifikat liegt: `-CertificateThumbprint` für einen Schlüssel auf einem Hardware-Token, `-CertificatePath` für eine PFX-Datei.
+  - Der Release-Workflow kennt bisher nur die PFX-Datei (Secrets `SIGNING_CERT_PFX_BASE64` und `SIGNING_CERT_PASSWORD`). Solche Dateien geben öffentliche Aussteller seit dem 1.6.2023 nicht mehr aus; der Schlüssel muss in Hardware oder bei einem Signaturdienst liegen. Mit einem heute ausgestellten Zertifikat signiert der Workflow also nicht.
+  - Offen ist, welcher Weg das ersetzt.
 - **winget:**
   - `build/New-WingetManifest.ps1 -Version x.y.z` erzeugt geprüfte Manifeste (`Celestial0579.Lagerfeuer`). Der Release-Workflow legt sie bei jedem Release als Artefakt ab.
   - Fehlt noch: die Einreichung als Pull Request bei [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).

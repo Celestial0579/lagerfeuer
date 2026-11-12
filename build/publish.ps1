@@ -9,15 +9,19 @@
     ./build/publish.ps1 -Platform x64,ARM64 -Installer
 
 .EXAMPLE
-    # Signieren mit Zertifikat aus dem Windows-Zertifikatsspeicher (z.B. Hardware-Token):
+    # Signieren mit Zertifikat aus dem Windows-Zertifikatsspeicher (Schlüssel auf einem Hardware-Token
+    # am Baurechner):
     ./build/publish.ps1 -Installer -CertificateThumbprint 0123ABCD...
 
-    # Signieren mit PFX-Datei (Kennwort aus Umgebungsvariable LAGERFEUER_SIGN_PASSWORD):
+    # Signieren mit PFX-Datei (Kennwort aus Umgebungsvariable LAGERFEUER_SIGN_PASSWORD). Öffentliche
+    # Aussteller geben seit dem 1.6.2023 keine PFX-Dateien mehr aus; das taugt nur noch für selbst
+    # ausgestellte Zertifikate, etwa zum Ausprobieren:
     ./build/publish.ps1 -Installer -CertificatePath C:\certs\lagerfeuer.pfx
 
 .NOTES
-    In GitHub Actions: Secrets SIGNING_CERT_PFX_BASE64 und SIGNING_CERT_PASSWORD hinterlegen –
-    der Release-Workflow signiert dann automatisch (siehe .github/workflows/release.yml).
+    Der Release-Workflow (.github/workflows/release.yml) kennt bisher nur den Weg über eine PFX-Datei
+    (Secrets SIGNING_CERT_PFX_BASE64 und SIGNING_CERT_PASSWORD) und signiert deshalb derzeit nicht.
+    Siehe den Kommentar dort.
 #>
 param(
     [ValidateSet('x64', 'ARM64')]
