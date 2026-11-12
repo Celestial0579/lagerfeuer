@@ -184,6 +184,7 @@ Vorbereitet, braucht noch eine Entscheidung:
 - **winget:**
   - `build/New-WingetManifest.ps1 -Version x.y.z` erzeugt geprüfte Manifeste (`Celestial0579.Lagerfeuer`). Der Release-Workflow legt sie bei jedem Release als Artefakt ab.
   - Fehlt noch: die Einreichung als Pull Request bei [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
+- **Microsoft Store (zurückgestellt):** Ein Paket aus dem Store würde Microsoft selbst signieren. Was eine Einreichung verlangt und was dafür an Lagerfeuer zu ändern wäre, steht in [docs/microsoft-store.md](docs/microsoft-store.md); der Stand der Signatur in [docs/signatur.md](docs/signatur.md). Ein Entwurf der Datenschutzerklärung liegt in [DATENSCHUTZ.md](DATENSCHUTZ.md).
 
 Ideen für später:
 - Podcast-Folgen herunterladen (offline zunächst nur Bücher).
