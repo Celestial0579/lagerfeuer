@@ -11,7 +11,8 @@ namespace Lagerfeuer.Services;
 /// - Die Datei wird in Blöcke (Chunks) eingeteilt; eine .map-Datei merkt sich, welche Blöcke vorhanden sind.
 /// - Ein einzelner Download-Loop lädt sequenziell per HTTP-Range ab der Position, die der Player braucht,
 ///   und lädt danach den Rest der Datei im Hintergrund vor.
-/// - Springt der Player an eine noch nicht geladene Stelle, wird der Download dort neu gestartet.
+/// - Springt der Player an eine noch nicht geladene Stelle, wird der Download dort neu gestartet. Die
+///   laufende Anfrage wird dafür abgebrochen; der Sprung wartet nicht, bis ihr Block fertig ist.
 /// - Ist die Datei komplett, kann sie direkt (und in v2 offline) von der Platte gespielt werden.
 /// </summary>
 public sealed class CachingHttpStream : Stream
@@ -36,6 +37,13 @@ public sealed class CachingHttpStream : Stream
     private int _wantVersion;
     private TaskCompletionSource _signal = NewSignal();
     private Task? _downloader;
+    // Die laufende Anfrage des Downloads und der Block, den sie gerade holt (-1: keine Anfrage unterwegs).
+    // Beides nur unter _requestLock anfassen: Der Leser bricht die Anfrage ab, der Download räumt sie weg.
+    // Unter derselben Sperre ändert der Leser seine Wunschstelle (_wantChunk, _wantVersion), und der Download
+    // liest sie, wenn er eine Anfrage ansetzt. So geht kein Sprung zwischen beidem verloren.
+    private readonly object _requestLock = new();
+    private CancellationTokenSource? _requestCts;
+    private int _downloadChunk = -1;
     private volatile Exception? _lastError;
     private bool _rangeSupported = true;
     private bool _fileClosed;
@@ -209,7 +217,25 @@ public sealed class CachingHttpStream : Stream
 
         while (!ct.IsCancellationRequested)
         {
-            var start = NextMissingChunk(_wantChunk);
+            // Eigene Abbruchmöglichkeit je Anfrage: Springt der Player woanders hin, endet nur diese Anfrage.
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+            // Wunschstelle lesen und die Anfrage anmelden in einem Zug. Ein Sprung des Players kommt damit
+            // entweder vorher an (dann setzt die Anfrage schon an der neuen Stelle an) oder nachher (dann findet
+            // er die angemeldete Anfrage und bricht sie ab). Den Stand der Wünsche merkt sich die Schleife hier,
+            // nicht erst nach der Antwort des Servers: Sonst hielte sie einen Sprung, der in der Zwischenzeit
+            // eintrifft, für schon berücksichtigt und lüde an der alten Stelle der Reihe nach weiter (#9).
+            int start, seenVersion;
+            lock (_requestLock)
+            {
+                seenVersion = Volatile.Read(ref _wantVersion);
+                start = NextMissingChunk(_wantChunk);
+                if (start >= 0)
+                {
+                    _requestCts = request;
+                    _downloadChunk = start;
+                }
+            }
             if (start < 0)
             {
                 lock (_fileLock) { if (!_fileClosed) _file.Flush(); }
@@ -227,7 +253,7 @@ public sealed class CachingHttpStream : Stream
                     var req = new HttpRequestMessage(HttpMethod.Get, _api.Resolve(_contentPath));
                     req.Headers.Range = new RangeHeaderValue(from, null);
                     return req;
-                }, HttpCompletionOption.ResponseHeadersRead, ct);
+                }, HttpCompletionOption.ResponseHeadersRead, request.Token);
 
                 if (!resp.IsSuccessStatusCode)
                     throw new AbsApiException($"Download fehlgeschlagen ({(int)resp.StatusCode}).", resp.StatusCode);
@@ -235,13 +261,13 @@ public sealed class CachingHttpStream : Stream
                 // Ohne Range-Support kommt die ganze Datei ab Byte 0.
                 _rangeSupported = resp.StatusCode == HttpStatusCode.PartialContent;
                 var chunk = _rangeSupported ? start : 0;
-                var seenVersion = Volatile.Read(ref _wantVersion);
 
-                await using var net = await resp.Content.ReadAsStreamAsync(ct);
+                await using var net = await resp.Content.ReadAsStreamAsync(request.Token);
                 while (chunk < _chunkCount)
                 {
+                    lock (_requestLock) _downloadChunk = chunk;
                     var len = ChunkLength(chunk);
-                    await net.ReadExactlyAsync(buffer.AsMemory(0, len), ct);
+                    await net.ReadExactlyAsync(buffer.AsMemory(0, len), request.Token);
                     if (!Volatile.Read(ref _have[chunk])) WriteChunk(chunk, buffer, len);
                     chunk++;
                     failures = 0;
@@ -266,6 +292,11 @@ public sealed class CachingHttpStream : Stream
             {
                 return;
             }
+            catch (OperationCanceledException) when (request.IsCancellationRequested)
+            {
+                // Der Player will an eine andere Stelle (AbortRequestIfElsewhere): oben neu ansetzen. Der
+                // angefangene Block ist verworfen und kommt später noch einmal.
+            }
             catch (Exception ex)
             {
                 _lastError = ex;
@@ -275,7 +306,34 @@ public sealed class CachingHttpStream : Stream
                 try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 * failures)), ct); }
                 catch (OperationCanceledException) { return; }
             }
+            finally
+            {
+                // Vor dem Freigeben der Anfrage: Danach darf sie niemand mehr abbrechen.
+                lock (_requestLock)
+                {
+                    _requestCts = null;
+                    _downloadChunk = -1;
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// Bricht die laufende Anfrage ab, wenn der Player einen fehlenden Block verlangt, an dem sie nicht gleich
+    /// vorbeikommt. Sonst wartete der Sprung, bis der laufende Block von 256 KiB fertig ist, über eine langsame
+    /// Verbindung also Sekunden, und solange der Server noch gar nicht geantwortet hat, beliebig lange.
+    ///
+    /// Nicht abgebrochen wird, wenn die Stelle kurz voraus liegt (dasselbe Fenster wie beim Weiterlesen) und
+    /// wenn der Server keine Range-Anfragen kann: Dann käme die Datei ohnehin wieder von vorn.
+    ///
+    /// Nur unter <see cref="_requestLock"/> aufrufen.
+    /// </summary>
+    private void AbortRequestIfElsewhere(int want)
+    {
+        if (!_rangeSupported) return;
+        if (_requestCts is null || _downloadChunk < 0) return;
+        if (want >= _downloadChunk && want <= _downloadChunk + ContinueWindowChunks) return;
+        _requestCts.Cancel();
     }
 
     private void WriteChunk(int chunk, byte[] buffer, int len)
@@ -329,10 +387,14 @@ public sealed class CachingHttpStream : Stream
             if (Volatile.Read(ref _have[chunk])) return;
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            if (_wantChunk != chunk)
+            lock (_requestLock)
             {
-                _wantChunk = chunk;
-                Interlocked.Increment(ref _wantVersion);
+                if (_wantChunk != chunk)
+                {
+                    _wantChunk = chunk;
+                    Interlocked.Increment(ref _wantVersion);
+                    AbortRequestIfElsewhere(chunk);
+                }
             }
             EnsureDownloader();
 
