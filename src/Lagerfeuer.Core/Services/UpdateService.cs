@@ -17,6 +17,7 @@ namespace Lagerfeuer.Services;
 ///   Lagerfeuer-&lt;ver&gt;-win-x64-setup.exe   → installierte Version: Setup still mit /S /RESTART ausführen
 ///   Lagerfeuer-&lt;ver&gt;-win-x64.exe         → portable Version: laufende EXE austauschen und neu starten
 /// Die SHA-256-Prüfsumme, die GitHub für jedes Asset liefert, wird vor dem Ausführen geprüft.
+/// Liefert GitHub keine, wird nichts geladen und nichts gestartet.
 /// </summary>
 public sealed class UpdateService
 {
@@ -35,7 +36,36 @@ public sealed class UpdateService
     private static readonly HttpClient SharedHttp = CreateClient();
 
     /// <summary>Single-File-EXE (portabel) statt Installation?</summary>
-    public static bool IsPortable => string.IsNullOrEmpty(AppAssembly.Location);
+    public static bool IsPortable => IsSingleFileExe(AppAssembly.Location, Environment.ProcessPath);
+
+    /// <summary>
+    /// Trägt die EXE des Prozesses die ganze App in sich? Nur dann darf der Updater sie gegen eine neue
+    /// Single-File-EXE tauschen.
+    ///
+    /// build/publish.ps1 baut die portable Fassung mit IncludeAllContentForSelfExtract: Sie entpackt sich beim
+    /// Start nach %TEMP%\.net und lädt ihre Bibliotheken von dort. <see cref="Assembly.Location"/> ist dann
+    /// nicht leer, sondern zeigt in diesen Ordner. Die frühere Prüfung auf „leer“ hielt deshalb jede portable
+    /// EXE für eine Installation: Sie lud das Setup und installierte Lagerfeuer, statt sich selbst zu tauschen.
+    ///
+    /// In einer Installation ist die EXE des Prozesses der Starter „Lagerfeuer.exe“, und die Bibliothek
+    /// „Lagerfeuer.dll“ liegt neben ihm. Die Single-File-EXE trägt beides in sich und entpackt nur die
+    /// Bibliothek. Portabel ist die App also, wenn die Bibliothek in einem anderen Ordner liegt als die EXE des
+    /// Prozesses und neben ihr kein Starter liegt. Beides muss zutreffen; im Zweifel gilt die App als
+    /// installiert, und der Updater benennt keine EXE um.
+    /// </summary>
+    /// <param name="assemblyLocation">Pfad der Programmbibliothek der App (<see cref="Assembly.Location"/>).</param>
+    /// <param name="processPath">Pfad der EXE des Prozesses (<see cref="Environment.ProcessPath"/>).</param>
+    internal static bool IsSingleFileExe(string? assemblyLocation, string? processPath)
+    {
+        // Nichts entpackt: Die Bibliothek liegt gar nicht auf der Platte, sondern nur in der EXE.
+        if (string.IsNullOrEmpty(assemblyLocation)) return true;
+        if (string.IsNullOrEmpty(processPath)) return false;
+
+        var libraryDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyLocation));
+        var processDirectory = Path.GetDirectoryName(Path.GetFullPath(processPath));
+        return !string.Equals(libraryDirectory, processDirectory, StringComparison.OrdinalIgnoreCase)
+            && !File.Exists(Path.ChangeExtension(assemblyLocation, ".exe"));
+    }
 
     private static string CurrentRid => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
 
@@ -59,6 +89,20 @@ public sealed class UpdateService
 
     public async Task<UpdateInfo?> CheckAsync(CancellationToken ct = default)
     {
+        try
+        {
+            return await CheckCoreAsync(ct);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException && !ct.IsCancellationRequested)
+        {
+            // Die Einstellungsseite zeigt die Meldung hinter „Update-Prüfung fehlgeschlagen:“.
+            var reason = FailureReason(ex);
+            throw new InvalidOperationException(char.ToUpperInvariant(reason[0]) + reason[1..] + ".", ex);
+        }
+    }
+
+    private async Task<UpdateInfo?> CheckCoreAsync(CancellationToken ct)
+    {
         using var resp = await _http.GetAsync(
             $"https://api.github.com/repos/{RepositoryOwner}/{RepositoryName}/releases/latest", ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // noch kein Release
@@ -76,9 +120,30 @@ public sealed class UpdateService
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
     }
 
-    /// <summary>Lädt das Update herunter und prüft die Prüfsumme. Gibt den lokalen Pfad zurück.</summary>
+    /// <summary>
+    /// Lädt das Update herunter und prüft die Prüfsumme. Gibt den lokalen Pfad zurück.
+    /// Ohne Prüfsumme wird gar nicht erst geladen: Was sich nicht prüfen lässt, wird auch nicht gestartet.
+    /// </summary>
     public async Task<string> DownloadAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct = default)
     {
+        try
+        {
+            return await DownloadCoreAsync(asset, progress, ct);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException && !ct.IsCancellationRequested)
+        {
+            // Netz, Platte, Rechte. Die eigenen Meldungen sind InvalidOperationException und gehen unverändert durch.
+            throw Failure("Das Update ließ sich nicht herunterladen", ex);
+        }
+    }
+
+    private async Task<string> DownloadCoreAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct)
+    {
+        if (asset.Sha256 is not { } expected || !IsSha256(expected))
+            throw new InvalidOperationException(
+                "Für diese Version liefert GitHub keine Prüfsumme. Ohne Prüfung installiert Lagerfeuer nichts – " +
+                "du findest die Datei auf der Release-Seite.");
+
         // Portabel: neben die laufende EXE (gleiches Laufwerk → atomares Umbenennen möglich).
         var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, asset.Name)
             : _portable ? Environment.ProcessPath + ".new"
@@ -106,7 +171,7 @@ public sealed class UpdateService
             sha.TransformFinalBlock([], 0, 0);
         }
 
-        if (asset.Sha256 is { } expected && !Convert.ToHexString(sha.Hash!).Equals(expected, StringComparison.OrdinalIgnoreCase))
+        if (!Convert.ToHexString(sha.Hash!).Equals(expected, StringComparison.OrdinalIgnoreCase))
         {
             File.Delete(target);
             throw new InvalidOperationException("Die Prüfsumme des Updates stimmt nicht – Download verworfen.");
@@ -115,25 +180,152 @@ public sealed class UpdateService
     }
 
     /// <summary>Startet die Installation des heruntergeladenen Updates. Danach muss sich die App beenden.</summary>
-    public void LaunchInstaller(string downloadedFile)
+    public void LaunchInstaller(string downloadedFile) => LaunchInstaller(downloadedFile, Process.Start);
+
+    /// <param name="downloadedFile">Pfad der geprüften neuen Fassung.</param>
+    /// <param name="start">Für Tests: ersetzt <see cref="Process.Start(ProcessStartInfo)"/>.</param>
+    internal void LaunchInstaller(string downloadedFile, Func<ProcessStartInfo, Process?> start)
     {
-        if (IsPortable)
+        // Wie CheckAsync und DownloadAsync nach der Variante dieser Instanz, nicht nach der statischen Eigenschaft.
+        if (_portable)
         {
-            // Eine laufende EXE darf umbenannt, aber nicht überschrieben werden.
             var exe = Environment.ProcessPath!;
-            var old = exe + ".old";
-            File.Delete(old);
-            File.Move(exe, old);
-            File.Move(downloadedFile, exe);
-            Process.Start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
+            ReplaceExecutable(exe, downloadedFile);
+            try
+            {
+                start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                // Die neue EXE liegt schon am Platz, startet aber nicht: zurück zur bisherigen.
+                // Scheitert auch das, meldet RestoreExecutable selbst, wo die bisherige liegt.
+                RestoreExecutable(exe);
+                throw Failure("Die neue Version ließ sich nicht starten", ex);
+            }
         }
         else
         {
             // Das Setup wartet, bis sich die App beendet hat, und startet sie danach neu.
-            Process.Start(new ProcessStartInfo(downloadedFile, "/S /RESTART") { UseShellExecute = true });
+            try
+            {
+                start(new ProcessStartInfo(downloadedFile, "/S /RESTART") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                throw Failure("Das Setup ließ sich nicht starten", ex);
+            }
         }
         Log.Info($"Update gestartet: {downloadedFile}");
     }
+
+    /// <summary>
+    /// Tauscht die portable EXE gegen die heruntergeladene Fassung. Die bisherige wird zu „…exe.old“
+    /// (eine laufende EXE darf umbenannt, aber nicht überschrieben werden), die neue rückt an ihren Platz.
+    /// Scheitert der zweite Schritt, wird der erste rückgängig gemacht: Am ursprünglichen Pfad liegt danach
+    /// wieder die bisherige EXE – oder die Meldung sagt, wo sie liegt.
+    /// </summary>
+    /// <param name="exe">Pfad der laufenden EXE.</param>
+    /// <param name="downloadedFile">Pfad der geprüften neuen Fassung.</param>
+    /// <param name="move">Für Tests: ersetzt <see cref="File.Move(string, string, bool)"/>.</param>
+    internal static void ReplaceExecutable(string exe, string downloadedFile, Action<string, string, bool>? move = null)
+    {
+        move ??= File.Move;
+        var old = exe + ".old";
+
+        // Prüfen, solange noch nichts angefasst ist (z.B. Download inzwischen vom Virenscanner entfernt).
+        if (!File.Exists(downloadedFile))
+            throw new InvalidOperationException("Die heruntergeladene Datei ist nicht mehr da – das Update wurde nicht eingespielt.");
+
+        try
+        {
+            File.Delete(old); // Rest vom vorigen Update
+            move(exe, old, false);
+        }
+        catch (Exception ex)
+        {
+            throw Failure("Die laufende EXE ließ sich nicht umbenennen", ex);
+        }
+
+        try
+        {
+            move(downloadedFile, exe, false);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                move(old, exe, true);
+            }
+            catch (Exception rollback)
+            {
+                throw new InvalidOperationException(StrandedMessage(exe, old), new AggregateException(ex, rollback));
+            }
+            throw Failure("Das Update ließ sich nicht einspielen", ex);
+        }
+    }
+
+    /// <summary>
+    /// Macht <see cref="ReplaceExecutable"/> rückgängig: Die bisherige EXE („…exe.old“) kommt zurück an ihren
+    /// Platz, die neue wird dabei verworfen.
+    /// </summary>
+    internal static void RestoreExecutable(string exe, Action<string, string, bool>? move = null)
+    {
+        move ??= File.Move;
+        var old = exe + ".old";
+        try
+        {
+            move(old, exe, true);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(StrandedMessage(exe, old), ex);
+        }
+    }
+
+    private static string StrandedMessage(string exe, string old)
+        => "Das Update ist gescheitert, und die bisherige Version ließ sich nicht an ihren Platz zurücklegen. " +
+           $"Sie liegt unter „{old}“ – benenne sie von Hand wieder in „{Path.GetFileName(exe)}“ um.";
+
+    /// <summary>
+    /// Meldung für die Update-Leiste, immer gleich aufgebaut: was nicht ging, dass Lagerfeuer bei der bisherigen
+    /// Version bleibt, und ein kurzer Grund. Die ursprüngliche Ausnahme hängt an und landet so im Log. Ihr Text
+    /// ist englisch und nennt vollständige Pfade samt Kontonamen; in die Leiste gehört er nicht.
+    /// </summary>
+    private static InvalidOperationException Failure(string what, Exception cause)
+        => new($"{what} – Lagerfeuer bleibt bei der bisherigen Version. Grund: {FailureReason(cause)}.", cause);
+
+    /// <summary>Kurzer Grund auf Deutsch, ohne Pfade. Was hier nicht vorkommt, verweist auf das Log.</summary>
+    internal static string FailureReason(Exception ex) => ex switch
+    {
+        System.ComponentModel.Win32Exception w => WindowsReason(w.NativeErrorCode) ?? $"Windows-Fehler {w.NativeErrorCode}",
+        UnauthorizedAccessException => "Zugriff verweigert",
+        FileNotFoundException or DirectoryNotFoundException => "Datei nicht gefunden",
+        HttpIOException or IOException { InnerException: System.Net.Sockets.SocketException }
+            => "Verbindung zu GitHub abgebrochen",
+        IOException io => WindowsReason(Win32Code(io.HResult)) ?? "Fehler beim Zugriff auf die Datei",
+        HttpRequestException { StatusCode: { } status } => $"GitHub antwortet mit {(int)status}",
+        HttpRequestException => "keine Verbindung zu GitHub",
+        OperationCanceledException or TimeoutException => "Zeitüberschreitung",
+        _ => "unbekannt, Einzelheiten stehen im Log",
+    };
+
+    /// <summary>Die Windows-Fehler, die beim Laden, Tauschen und Starten vorkommen. Null: kein eigener Text.</summary>
+    private static string? WindowsReason(int code) => code switch
+    {
+        2 or 3 => "Datei nicht gefunden",                              // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
+        5 => "Zugriff verweigert",                                     // ERROR_ACCESS_DENIED
+        32 or 33 => "Datei wird von einem anderen Programm verwendet", // ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
+        39 or 112 => "Datenträger voll",                               // ERROR_HANDLE_DISK_FULL, ERROR_DISK_FULL
+        193 or 216 => "Datei ist kein lauffähiges Programm",           // ERROR_BAD_EXE_FORMAT, ERROR_EXE_MACHINE_TYPE_MISMATCH
+        225 or 226 => "vom Virenschutz blockiert",                     // ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED
+        1223 => "abgebrochen",                                         // ERROR_CANCELLED
+        1260 => "von einer Richtlinie des Systems blockiert",          // ERROR_ACCESS_DISABLED_BY_POLICY
+        _ => null,
+    };
+
+    /// <summary>Der Windows-Fehlercode aus einem HRESULT der Form 0x8007xxxx, sonst -1.</summary>
+    private static int Win32Code(int hresult)
+        => (hresult & unchecked((int)0xFFFF0000)) == unchecked((int)0x80070000) ? hresult & 0xFFFF : -1;
 
     /// <summary>Räumt Reste eines vorherigen Updates auf (beim Start aufrufen).</summary>
     public static void CleanupAfterUpdate()
@@ -152,7 +344,131 @@ public sealed class UpdateService
         {
             // z.B. alte EXE noch kurz gesperrt – beim nächsten Start erneut
         }
+
+        // Nur die portable EXE entpackt sich. Im Hintergrund, damit der Start nicht darauf wartet.
+        if (IsPortable)
+            _ = Task.Run(() => RemoveStaleExtractions(AppAssembly.Location, Environment.ProcessPath, Path.GetTempPath()));
     }
+
+    /// <summary>Endung eines Entpackordners, der geprüft, umbenannt und zum Löschen vorgesehen ist.</summary>
+    private const string RemovalSuffix = ".entfernen";
+
+    /// <summary>
+    /// Löscht die Entpackordner früherer Fassungen derselben portablen EXE. Sie entpackt sich nach
+    /// %TEMP%\.net\&lt;Name der EXE&gt;\&lt;Kennung&gt;, jede Fassung in einen eigenen Ordner von rund 150 MB.
+    /// Nach einem Update bliebe der Ordner der vorigen Fassung sonst für immer liegen.
+    ///
+    /// Die App löscht hier Ordner, deshalb gilt: Gelöscht wird nur, was alle Bedingungen erfüllt. Im Zweifel
+    /// bleibt es liegen.
+    /// <list type="bullet">
+    /// <item>Der eigene Entpackordner liegt dort, wo .NET ihn anlegt: %TEMP%\.net\&lt;Name der laufenden EXE&gt;\&lt;Kennung&gt;.
+    /// Ein anderer Ort, auch ein über DOTNET_BUNDLE_EXTRACT_BASE_DIR verlegter, wird nicht angefasst. Die
+    /// installierte Fassung erfüllt das nie.</item>
+    /// <item>Der Kandidat ist ein direkter Nachbar des eigenen Ordners, heißt wie eine Kennung und enthält die
+    /// Programmbibliothek, aber keinen Starter. Der eigene Ordner ist nie Kandidat.</item>
+    /// <item>Weder der Kandidat noch irgendetwas darin ist eine Verknüpfung (Junction, Symlink). Verknüpfungen
+    /// werden nicht verfolgt und nicht gelöscht.</item>
+    /// <item>Der Kandidat lässt sich umbenennen. Solange eine andere Instanz daraus läuft, geht das nicht; dann
+    /// bleibt er unberührt und ohne Meldung liegen. Gelöscht wird erst der umbenannte Ordner, nie ein benutzter.</item>
+    /// </list>
+    /// Entpackordner enthalten nur Programmdateien. Fehlt einer, entpackt sich die zugehörige EXE beim nächsten
+    /// Start neu.
+    /// </summary>
+    /// <param name="ownLibrary">Pfad der geladenen Programmbibliothek (<see cref="Assembly.Location"/>).</param>
+    /// <param name="processPath">Pfad der EXE des Prozesses (<see cref="Environment.ProcessPath"/>).</param>
+    /// <param name="tempPath">Temp-Ordner des Kontos (<see cref="Path.GetTempPath"/>).</param>
+    /// <param name="moveDirectory">Für Tests: ersetzt <see cref="Directory.Move(string, string)"/>.</param>
+    /// <returns>Zahl der gelöschten Ordner.</returns>
+    internal static int RemoveStaleExtractions(string? ownLibrary, string? processPath, string tempPath,
+        Action<string, string>? moveDirectory = null)
+    {
+        var removed = 0;
+        try
+        {
+            if (string.IsNullOrEmpty(ownLibrary) || string.IsNullOrEmpty(processPath)) return 0;
+            moveDirectory ??= Directory.Move;
+
+            var library = Path.GetFileName(ownLibrary);
+            var own = new FileInfo(ownLibrary).Directory;  // %TEMP%\.net\<Name der EXE>\<Kennung>
+            var app = own?.Parent;                         // %TEMP%\.net\<Name der EXE>
+            var root = app?.Parent;                        // %TEMP%\.net
+            if (own is null || app is null || root is null) return 0;
+
+            // Liegt alles da, wo .NET die laufende EXE entpackt? Sonst verstehen wir die Lage nicht und löschen nichts.
+            if (!SamePath(root.FullName, Path.Combine(tempPath, ".net"))) return 0;
+            if (!string.Equals(app.Name, Path.GetFileNameWithoutExtension(processPath), StringComparison.OrdinalIgnoreCase)) return 0;
+            if (!IsBundleId(own.Name) || !HasLibraryWithoutStarter(own, library)) return 0;
+            if (IsLink(root) || IsLink(app) || IsLink(own)) return 0;
+
+            foreach (var candidate in app.EnumerateDirectories())
+            {
+                try
+                {
+                    if (SamePath(candidate.FullName, own.FullName) || IsLink(candidate)) continue;
+
+                    string doomed;
+                    if (candidate.Name.EndsWith(RemovalSuffix, StringComparison.Ordinal)
+                        && IsBundleId(candidate.Name[..^RemovalSuffix.Length]))
+                    {
+                        // Rest eines früheren Laufs: schon geprüft und umbenannt, das Löschen kam nicht zu Ende.
+                        doomed = candidate.FullName;
+                    }
+                    else
+                    {
+                        if (!IsBundleId(candidate.Name) || !HasLibraryWithoutStarter(candidate, library)) continue;
+                        if (ContainsLink(candidate)) continue;
+                        doomed = candidate.FullName + RemovalSuffix;
+                        if (Directory.Exists(doomed) || File.Exists(doomed)) continue;
+                        // Scheitert, solange eine Datei darin geöffnet ist: Dann läuft noch eine Instanz daraus.
+                        moveDirectory(candidate.FullName, doomed);
+                    }
+
+                    if (ContainsLink(new DirectoryInfo(doomed))) continue;
+                    Directory.Delete(doomed, recursive: true);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // In Benutzung oder gesperrt: bleibt liegen, beim nächsten Start erneut.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Entpackordner früherer Fassungen ließen sich nicht aufräumen", ex);
+        }
+
+        if (removed > 0) Log.Info($"Entpackordner früherer Fassungen entfernt: {removed}");
+        return removed;
+    }
+
+    /// <summary>So heißen die Entpackordner: zwölf Zeichen aus Buchstaben, Ziffern, „-“ und „_“.</summary>
+    private static bool IsBundleId(string name)
+        => name.Length == 12 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    /// <summary>Wie in <see cref="IsSingleFileExe"/>: Im Entpackordner liegt die Bibliothek ohne ihren Starter.</summary>
+    private static bool HasLibraryWithoutStarter(DirectoryInfo directory, string library)
+        => File.Exists(Path.Combine(directory.FullName, library))
+           && !File.Exists(Path.Combine(directory.FullName, Path.ChangeExtension(library, ".exe")));
+
+    private static bool IsLink(FileSystemInfo entry) => (entry.Attributes & FileAttributes.ReparsePoint) != 0;
+
+    /// <summary>Liegt irgendwo im Ordner eine Verknüpfung? Geht Ebene für Ebene vor und folgt selbst keiner.</summary>
+    private static bool ContainsLink(DirectoryInfo directory)
+    {
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (IsLink(entry)) return true;
+            if (entry is DirectoryInfo sub && ContainsLink(sub)) return true;
+        }
+        return false;
+    }
+
+    private static bool SamePath(string a, string b)
+        => string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)),
+            StringComparison.OrdinalIgnoreCase);
 
     internal static bool TryParseVersion(string? tag, out Version version)
     {
@@ -168,8 +484,19 @@ public sealed class UpdateService
 
     private static Version Normalize(Version v) => new(v.Major, Math.Max(0, v.Minor), Math.Max(0, v.Build));
 
-    private static string? ParseDigest(string? digest)
-        => digest is not null && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) ? digest[7..] : null;
+    /// <summary>
+    /// GitHub liefert die Prüfsumme als „sha256:&lt;64 Hex-Zeichen&gt;“. Alles andere (fehlend, anderes Verfahren,
+    /// verstümmelt) gilt als „keine Prüfsumme“ – und dann wird nichts installiert, siehe <see cref="DownloadAsync"/>.
+    /// </summary>
+    internal static string? ParseDigest(string? digest)
+    {
+        const string prefix = "sha256:";
+        if (digest is null || !digest.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+        var hex = digest[prefix.Length..];
+        return IsSha256(hex) ? hex : null;
+    }
+
+    private static bool IsSha256(string value) => value.Length == 64 && value.All(char.IsAsciiHexDigit);
 
     private static HttpClient CreateClient()
     {
