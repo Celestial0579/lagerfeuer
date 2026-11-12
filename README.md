@@ -22,9 +22,11 @@ Unter [Releases](https://github.com/Celestial0579/lagerfeuer/releases) gibt es p
 | Datei | Beschreibung |
 |---|---|
 | `Lagerfeuer-<ver>-win-x64-setup.exe` | **Installer** (empfohlen). Installiert pro Benutzer nach `%LOCALAPPDATA%\Programs\Lagerfeuer`, ohne Adminrechte. Legt Startmenü- und optional Desktop-Verknüpfung an und erscheint unter „Apps & Features“. |
-| `Lagerfeuer-<ver>-win-x64.exe` | **Portable EXE**. Eine einzelne Datei, die .NET und Windows App SDK enthält. Beim ersten Start entpackt sie sich einmalig nach `%TEMP%\.net`. |
+| `Lagerfeuer-<ver>-win-x64.exe` | **Portable EXE**. Eine einzelne Datei, die .NET und Windows App SDK enthält. Beim ersten Start entpackt sie sich einmalig nach `%TEMP%\.net`. Nach einem Update räumt sie dort den entpackten Stand der vorigen Fassung weg. |
 
 Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
+
+> **Portable EXE bis 0.2.1:** Sie hält sich beim Update für eine Installation, lädt das Setup und installiert Lagerfeuer zusätzlich nach `%LOCALAPPDATA%\Programs\Lagerfeuer`. Wenn du portabel bleiben willst, lade die nächste portable EXE einmal von Hand von der Release-Seite. Neuere Fassungen tauschen sich selbst aus.
 
 > Solange kein Code-Signing-Zertifikat eingebunden ist, sind die Dateien nicht signiert. Windows SmartScreen warnt dann beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“).
 
@@ -91,8 +93,8 @@ Den Handler für `audiobookshelf://` registriert Lagerfeuer beim ersten SSO-Logi
 
 Lagerfeuer fragt kurz nach dem Start und danach alle 12 Stunden die Releases-API von GitHub (`releases/latest`) nach einer neueren Version. Entwürfe und Vorabversionen werden ignoriert. Gibt es ein Update, erscheint oben ein Hinweis mit drei Möglichkeiten:
 - **Jetzt aktualisieren:**
-  1. Lagerfeuer lädt die passende Datei herunter und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert.
-  2. Die installierte Version führt das Setup still aus (`/S /RESTART`); die portable EXE tauscht sich selbst aus.
+  1. Lagerfeuer lädt die passende Datei herunter und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert. Liefert GitHub keine Prüfsumme, wird nichts geladen und nichts installiert.
+  2. Die installierte Version führt das Setup still aus (`/S /RESTART`); die portable EXE tauscht sich selbst aus. Scheitert der Tausch, liegt danach wieder die bisherige EXE an ihrem Platz.
   3. Danach startet Lagerfeuer neu.
 - **Was ist neu?** öffnet die Release-Seite.
 - **Diese Version überspringen.**
@@ -122,7 +124,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
 - **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
-- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen.
+- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
 
 ```bash
