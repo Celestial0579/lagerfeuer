@@ -14,18 +14,36 @@ namespace Lagerfeuer.Services;
 /// Der Start selbst läuft nicht im Thread des Aufrufers. Windows prüft eine frisch geladene EXE, bevor es sie
 /// startet, und das kann viele Sekunden dauern (in der Test-VM 17). So lange bliebe sonst das Fenster stehen,
 /// und die Fortschrittsmeldung des Players fiele aus.
+///
+/// Weil das Fenster in dieser Zeit bedienbar ist, ließe es sich auch schließen. Das verhindert die
+/// <see cref="UpdateCloseGate"/>: Der Prozess endet nicht, solange ein Update startet.
 /// </summary>
 public static class UpdateInstallation
 {
     /// <param name="launch">Startet das Update (<see cref="UpdateService.LaunchInstaller"/>). Wirft, wenn das nicht gelingt.</param>
     /// <param name="shutdownAsync">Fährt die App herunter: Wiedergabe beenden und den Fortschritt melden.</param>
     /// <param name="exit">Beendet die App.</param>
-    public static async Task RunAsync(Action launch, Func<Task> shutdownAsync, Action exit)
+    /// <param name="gate">
+    /// Sperre gegen das Schließen des Fensters während des Starts. Schließt das Fenster schon, beginnt das
+    /// Update gar nicht erst: Der Aufruf kehrt zurück, ohne etwas zu starten.
+    /// </param>
+    public static async Task RunAsync(Action launch, Func<Task> shutdownAsync, Action exit, UpdateCloseGate? gate = null)
     {
+        if (gate is not null && !gate.TryBeginInstall()) return;
+
         // Scheitert der Start, fliegt die Ausnahme hier hinaus und nichts ist heruntergefahren:
         // Die App läuft weiter, die Wiedergabe auch, und der Versuch lässt sich wiederholen.
         // Im Hintergrund, damit der Aufrufer (in der App der Thread der Oberfläche) währenddessen frei bleibt.
-        await Task.Run(launch);
+        try
+        {
+            await Task.Run(launch);
+        }
+        catch
+        {
+            // Nichts ist gestartet oder der Tausch ist zurückgenommen: Das Fenster darf wieder schließen.
+            gate?.InstallFailed();
+            throw;
+        }
 
         // Ab hier wartet das Update darauf, dass diese Instanz endet. Beendet wird deshalb in jedem Fall,
         // auch wenn das Herunterfahren hakt.

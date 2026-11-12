@@ -135,7 +135,8 @@ public sealed partial class MainWindow : Window
             UpdateBar.Message = "Update wird installiert – Lagerfeuer startet gleich neu …";
             // Erst starten, dann herunterfahren: Scheitert der Start, läuft die App samt Wiedergabe weiter.
             // Der Start läuft im Hintergrund (bei einer frisch geladenen EXE dauert er viele Sekunden);
-            // das Fenster bleibt so lange bedienbar, die Knöpfe der Leiste sind gesperrt.
+            // das Fenster bleibt so lange bedienbar, die Knöpfe der Leiste sind gesperrt, und schließen lässt
+            // es sich in dieser Zeit nicht (_closeGate).
             await UpdateInstallation.RunAsync(
                 launch: () => _updates.LaunchInstaller(file),
                 shutdownAsync: Player.ShutdownAsync,
@@ -143,7 +144,8 @@ public sealed partial class MainWindow : Window
                 {
                     _shutdownDone = true;
                     Application.Current.Exit();
-                });
+                },
+                gate: _closeGate);
         }
         catch (Exception ex)
         {
@@ -454,15 +456,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private bool _closeRequested;
+    private readonly UpdateCloseGate _closeGate = new();
 
     private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         if (_shutdownDone) return;
         args.Cancel = true;
-        // Ein zweiter Klick, während das Herunterfahren läuft, stößt nichts Neues an: Der erste schließt.
-        if (_closeRequested) return;
-        _closeRequested = true;
+        // Startet gerade ein Update, bleibt das Fenster offen: Der Prozess darf nicht mitten im Tausch der EXE
+        // enden, und die App beendet sich danach selbst. Ein zweiter Klick, während das Herunterfahren läuft,
+        // stößt nichts Neues an: Der erste schließt.
+        if (_closeGate.RequestClose() != CloseRequest.Proceed) return;
         try { await Player.ShutdownAsync(); }
         catch (Exception ex) { Log.Error("Fehler beim Beenden", ex); }
         _shutdownDone = true;
