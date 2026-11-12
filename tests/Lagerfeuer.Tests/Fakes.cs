@@ -65,6 +65,32 @@ internal sealed class RangeFileServer
     }
 }
 
+/// <summary>
+/// Baut den Kopf einer Windows-EXE, so weit der Updater ihn prüft: DOS-Kopf mit „MZ“ und dem Verweis auf den
+/// PE-Kopf, „PE\0\0“, Prozessorart und Merkmale. Dahinter folgt beliebiger Inhalt, damit sich zwei Dateien
+/// in ihrer Prüfsumme unterscheiden lassen. Ein lauffähiges Programm ist das nicht.
+/// </summary>
+internal static class TestProgram
+{
+    public const ushort X86 = 0x014C, X64 = 0x8664, Arm64 = 0xAA64;
+    public const ushort Executable = 0x0002, Dll = 0x2000;
+
+    public static byte[] Bytes(ushort machine = X64, string content = "", ushort characteristics = Executable, int peOffset = 0x80)
+    {
+        var tail = Encoding.UTF8.GetBytes(content);
+        var bytes = new byte[peOffset + 24 + tail.Length];
+        bytes[0] = (byte)'M';
+        bytes[1] = (byte)'Z';
+        BitConverter.TryWriteBytes(bytes.AsSpan(0x3C), peOffset);
+        bytes[peOffset] = (byte)'P';
+        bytes[peOffset + 1] = (byte)'E';
+        BitConverter.TryWriteBytes(bytes.AsSpan(peOffset + 4), machine);
+        BitConverter.TryWriteBytes(bytes.AsSpan(peOffset + 22), characteristics);
+        tail.CopyTo(bytes, peOffset + 24);
+        return bytes;
+    }
+}
+
 /// <summary>Temporäres Verzeichnis, das nach dem Test gelöscht wird.</summary>
 internal sealed class TempDir : IDisposable
 {
