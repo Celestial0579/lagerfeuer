@@ -36,7 +36,36 @@ public sealed class UpdateService
     private static readonly HttpClient SharedHttp = CreateClient();
 
     /// <summary>Single-File-EXE (portabel) statt Installation?</summary>
-    public static bool IsPortable => string.IsNullOrEmpty(AppAssembly.Location);
+    public static bool IsPortable => IsSingleFileExe(AppAssembly.Location, Environment.ProcessPath);
+
+    /// <summary>
+    /// Trägt die EXE des Prozesses die ganze App in sich? Nur dann darf der Updater sie gegen eine neue
+    /// Single-File-EXE tauschen.
+    ///
+    /// build/publish.ps1 baut die portable Fassung mit IncludeAllContentForSelfExtract: Sie entpackt sich beim
+    /// Start nach %TEMP%\.net und lädt ihre Bibliotheken von dort. <see cref="Assembly.Location"/> ist dann
+    /// nicht leer, sondern zeigt in diesen Ordner. Die frühere Prüfung auf „leer“ hielt deshalb jede portable
+    /// EXE für eine Installation: Sie lud das Setup und installierte Lagerfeuer, statt sich selbst zu tauschen.
+    ///
+    /// In einer Installation ist die EXE des Prozesses der Starter „Lagerfeuer.exe“, und die Bibliothek
+    /// „Lagerfeuer.dll“ liegt neben ihm. Die Single-File-EXE trägt beides in sich und entpackt nur die
+    /// Bibliothek. Portabel ist die App also, wenn die Bibliothek in einem anderen Ordner liegt als die EXE des
+    /// Prozesses und neben ihr kein Starter liegt. Beides muss zutreffen; im Zweifel gilt die App als
+    /// installiert, und der Updater benennt keine EXE um.
+    /// </summary>
+    /// <param name="assemblyLocation">Pfad der Programmbibliothek der App (<see cref="Assembly.Location"/>).</param>
+    /// <param name="processPath">Pfad der EXE des Prozesses (<see cref="Environment.ProcessPath"/>).</param>
+    internal static bool IsSingleFileExe(string? assemblyLocation, string? processPath)
+    {
+        // Nichts entpackt: Die Bibliothek liegt gar nicht auf der Platte, sondern nur in der EXE.
+        if (string.IsNullOrEmpty(assemblyLocation)) return true;
+        if (string.IsNullOrEmpty(processPath)) return false;
+
+        var libraryDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyLocation));
+        var processDirectory = Path.GetDirectoryName(Path.GetFullPath(processPath));
+        return !string.Equals(libraryDirectory, processDirectory, StringComparison.OrdinalIgnoreCase)
+            && !File.Exists(Path.ChangeExtension(assemblyLocation, ".exe"));
+    }
 
     private static string CurrentRid => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
 
