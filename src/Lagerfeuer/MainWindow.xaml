@@ -28,49 +28,6 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="1">
-        <!--  Offline-Hinweis  -->
-        <InfoBar
-            x:Name="OfflineBar"
-            Title="Offline"
-            Margin="12,0,12,8"
-            IsClosable="False"
-            IsOpen="False"
-            Message="Der Server ist nicht erreichbar. Heruntergeladene Bücher kannst du weiter hören – gehörte Zeit wird später übertragen."
-            Severity="Warning">
-            <InfoBar.ActionButton>
-                <Button x:Name="ReconnectButton" Click="OnReconnect" Content="Erneut verbinden" />
-            </InfoBar.ActionButton>
-        </InfoBar>
-
-        <!--  Update-Hinweis (GitHub-Releases)  -->
-        <InfoBar
-            x:Name="UpdateBar"
-            Margin="12,0,12,8"
-            IsOpen="False"
-            Severity="Informational">
-            <InfoBar.ActionButton>
-                <Button
-                    x:Name="UpdateButton"
-                    Click="OnInstallUpdate"
-                    Content="Jetzt aktualisieren"
-                    Style="{StaticResource AccentButtonStyle}" />
-            </InfoBar.ActionButton>
-            <InfoBar.Content>
-                <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="12">
-                    <HyperlinkButton x:Name="ReleaseNotesLink" Content="Was ist neu?" />
-                    <HyperlinkButton x:Name="SkipUpdateLink" Click="OnSkipUpdate" Content="Diese Version überspringen" />
-                    <ProgressBar
-                        x:Name="UpdateProgress"
-                        Width="200"
-                        VerticalAlignment="Center"
-                        Maximum="1"
-                        Visibility="Collapsed" />
-                </StackPanel>
-            </InfoBar.Content>
-        </InfoBar>
-        </StackPanel>
-
         <NavigationView
             x:Name="Nav"
             Grid.Row="2"
@@ -114,6 +71,52 @@
         </NavigationView>
 
         <Frame x:Name="LoginFrame" Grid.Row="2" />
+
+        <!--  Die Hinweisleisten stehen im Fenster über der Navigation (Zeile 1), im Baum aber dahinter:
+              Verliert etwas den Tastaturfokus, wandert er zum ersten fokussierbaren Element im Baum. Das soll
+              die Navigation oder die Anmeldeseite sein und nicht der Knopf „Jetzt aktualisieren“.  -->
+        <StackPanel Grid.Row="1">
+        <!--  Offline-Hinweis  -->
+        <InfoBar
+            x:Name="OfflineBar"
+            Title="Offline"
+            Margin="12,0,12,8"
+            IsClosable="False"
+            IsOpen="False"
+            Message="Der Server ist nicht erreichbar. Heruntergeladene Bücher kannst du weiter hören – gehörte Zeit wird später übertragen."
+            Severity="Warning">
+            <InfoBar.ActionButton>
+                <Button x:Name="ReconnectButton" Click="OnReconnect" Content="Erneut verbinden" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
+        <!--  Update-Hinweis (GitHub-Releases)  -->
+        <InfoBar
+            x:Name="UpdateBar"
+            Margin="12,0,12,8"
+            IsOpen="False"
+            Severity="Informational">
+            <InfoBar.ActionButton>
+                <Button
+                    x:Name="UpdateButton"
+                    Click="OnInstallUpdate"
+                    Content="Jetzt aktualisieren"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </InfoBar.ActionButton>
+            <InfoBar.Content>
+                <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="12">
+                    <HyperlinkButton x:Name="ReleaseNotesLink" Content="Was ist neu?" />
+                    <HyperlinkButton x:Name="SkipUpdateLink" Click="OnSkipUpdate" Content="Diese Version überspringen" />
+                    <ProgressBar
+                        x:Name="UpdateProgress"
+                        Width="200"
+                        VerticalAlignment="Center"
+                        Maximum="1"
+                        Visibility="Collapsed" />
+                </StackPanel>
+            </InfoBar.Content>
+        </InfoBar>
+        </StackPanel>
 
         <InfoBar
             x:Name="ErrorBar"

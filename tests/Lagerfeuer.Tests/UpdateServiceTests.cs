@@ -9,7 +9,7 @@ public class UpdateServiceTests : IDisposable
 {
     private readonly TempDir _dir = new();
 
-    private static readonly byte[] SetupBytes = "neues Setup"u8.ToArray();
+    private static readonly byte[] SetupBytes = TestProgram.Bytes(TestProgram.X86, "neues Setup");
     private static readonly string SetupDigest = "sha256:" + Convert.ToHexString(SHA256.HashData(SetupBytes)).ToLowerInvariant();
 
     private static string ReleaseJson(string tag, bool draft = false, bool prerelease = false, bool withAssets = true)

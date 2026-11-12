@@ -53,6 +53,11 @@ public sealed class AppSettings
     public bool HideFinishedEpisodes { get; set; }
     public string? SkippedUpdateVersion { get; set; }
 
+    /// <summary>Zuletzt gewählte Größe des Fensters, geräteunabhängig (bei 100 % Skalierung). Null: Vorgabe.</summary>
+    public int? WindowWidth { get; set; }
+    public int? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
+
     public static AppSettings Load()
     {
         try
