@@ -369,7 +369,21 @@ public sealed partial class MainWindow : Window
         ContentFrame.BackStack.Clear();
         Nav.SelectedItem = Nav.MenuItems[0];
         ContentFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
+        FocusNavigation();
     }
+
+    /// <summary>
+    /// Setzt den Tastaturfokus auf den gewählten Eintrag der Navigation.
+    ///
+    /// Nach dem Anmelden lag der Fokus auf der Anmeldeseite. Verschwindet sie, sucht sich das Fenster das erste
+    /// fokussierbare Element. Das war der Knopf „Jetzt aktualisieren“, wenn gerade ein Update angeboten wird:
+    /// Leertaste oder Eingabetaste hätten dann das Update gestartet statt die Wiedergabe.
+    /// </summary>
+    private void FocusNavigation()
+        => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (Nav.SelectedItem is NavigationViewItem item) item.Focus(FocusState.Programmatic);
+        });
 
     public async Task LogoutAsync(bool allDevices = false)
     {
