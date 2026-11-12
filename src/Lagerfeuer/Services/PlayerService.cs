@@ -37,6 +37,8 @@ public sealed partial class PlayerService : ObservableObject
     private int _trackIndex = -1;
     private CachingHttpStream? _stream;
     private (int Index, CachingHttpStream Stream)? _prefetch;
+    private bool _prefetching;
+    private bool _prefetchTriedForPosition;
     private double? _pendingSeek;
     private bool _playWhenOpened;
     private bool _syncInFlight;
@@ -293,6 +295,8 @@ public sealed partial class PlayerService : ObservableObject
         var index = FindTrackIndex(bookTime);
         Position = bookTime;
         UpdateChapter(bookTime);
+        // Nach einem Sprung neu prüfen, ob der Rest der Datei schon da ist (siehe OnTick).
+        _prefetchTriedForPosition = false;
 
         if (index == _trackIndex && _pendingSeek is null)
         {
@@ -426,6 +430,7 @@ public sealed partial class PlayerService : ObservableObject
         _pendingSeek = bookTime;
         _playWhenOpened = play;
         IsBuffering = true;
+        _prefetchTriedForPosition = false;
 
         try
         {
@@ -482,20 +487,28 @@ public sealed partial class PlayerService : ObservableObject
         return item;
     }
 
-    /// <summary>Lädt den nächsten Track im Hintergrund vor, sobald der aktuelle vollständig im Cache ist.</summary>
+    /// <summary>
+    /// Lädt den nächsten Track im Hintergrund vor, sobald der aktuelle den Server nicht mehr braucht: wenn er
+    /// von der Lesestelle bis zum Dateiende im Cache ist. Vollständig muss er dafür nicht sein. Nach einem
+    /// Sprung fehlt der Teil davor; würde darauf gewartet, käme das Vorladen zu spät oder gar nicht, und am
+    /// Dateiende stockte die Wiedergabe, bis der Anfang der nächsten Datei geladen ist.
+    /// </summary>
     private async Task PrefetchNextTrackAsync(int currentIndex, int generation)
     {
+        if (_prefetching) return;
+        var started = false;
         try
         {
             var session = _session;
             if (session is null || generation != _loadGeneration) return;
-            if (_stream is { IsComplete: false }) return;
+            if (_stream is { } current && !current.IsCompleteFrom(current.Position)) return;
 
             var nextIndex = currentIndex + 1;
             if (nextIndex >= session.AudioTracks.Count || _prefetch?.Index == nextIndex) return;
             var next = session.AudioTracks[nextIndex];
             if (_cache.IsTrackComplete(session.LibraryItemId, next)) return;
 
+            _prefetching = started = true;
             var stream = await _cache.OpenTrackAsync(session.LibraryItemId, next);
             if (generation != _loadGeneration || _session != session)
             {
@@ -508,6 +521,10 @@ public sealed partial class PlayerService : ObservableObject
         catch (Exception ex)
         {
             Log.Error("Vorladen des nächsten Tracks fehlgeschlagen", ex);
+        }
+        finally
+        {
+            if (started) _prefetching = false;
         }
     }
 
@@ -607,6 +624,17 @@ public sealed partial class PlayerService : ObservableObject
         Position = t;
         UpdateChapter(t);
         CachedFraction = _stream?.CachedFraction ?? (_trackIndex >= 0 ? 1 : 0);
+
+        // Vorladen des nächsten Tracks anstoßen, sobald der Rest des laufenden da ist. Einmal je Stelle:
+        // Nach einem Sprung oder Trackwechsel wird neu geprüft. Erst nach dem Öffnen (_pendingSeek ist dann
+        // leer): Beim Öffnen liest Windows kurz am Dateiende. Die Lesestelle steht in dem Moment dort, und ab
+        // dort ist alles geladen, obwohl fast die ganze Datei noch fehlt.
+        if (!_prefetchTriedForPosition && _pendingSeek is null
+            && _stream is { IsComplete: false } stream && stream.IsCompleteFrom(stream.Position))
+        {
+            _prefetchTriedForPosition = true;
+            _ = PrefetchNextTrackAsync(_trackIndex, _loadGeneration);
+        }
 
         CheckSleepTimer(t);
 

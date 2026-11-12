@@ -53,6 +53,21 @@ public sealed class CachingHttpStream : Stream
     /// <summary>Wird (auf einem Hintergrund-Thread) ausgelöst, sobald die Datei vollständig gecached ist.</summary>
     public event EventHandler? Completed;
 
+    /// <summary>
+    /// Ist ab dieser Position alles bis zum Dateiende geladen? Dann braucht die Wiedergabe von hier an den
+    /// Server für diese Datei nicht mehr, auch wenn davor noch Blöcke fehlen. Das ist die Lage nach einem
+    /// Sprung: Geladen wird erst bis zum Ende, die Lücke davor füllt sich danach.
+    /// </summary>
+    /// <param name="position">Byte-Position in der Datei. Werte außerhalb zählen als Anfang bzw. Ende.</param>
+    public bool IsCompleteFrom(long position)
+    {
+        if (_chunkCount == 0) return true;
+        var first = (int)Math.Clamp(position / ChunkSize, 0, _chunkCount - 1);
+        for (var i = first; i < _chunkCount; i++)
+            if (!Volatile.Read(ref _have[i])) return false;
+        return true;
+    }
+
     private CachingHttpStream(AbsApiClient api, string contentPath, string dataPath, long length, bool[] have)
     {
         _api = api;
