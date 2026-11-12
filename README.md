@@ -26,6 +26,8 @@ Unter [Releases](https://github.com/Celestial0579/lagerfeuer/releases) gibt es p
 
 Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
 
+> **Portable EXE bis 0.2.1:** Sie hält sich beim Update für eine Installation, lädt das Setup und installiert Lagerfeuer zusätzlich nach `%LOCALAPPDATA%\Programs\Lagerfeuer`. Wenn du portabel bleiben willst, lade die nächste portable EXE einmal von Hand von der Release-Seite. Neuere Fassungen tauschen sich selbst aus.
+
 > Solange kein Code-Signing-Zertifikat eingebunden ist, sind die Dateien nicht signiert. Windows SmartScreen warnt dann beim ersten Start („Weitere Informationen“ → „Trotzdem ausführen“).
 
 ## Funktionen
