@@ -32,3 +32,25 @@ jobs:
 
       - name: App bauen (ARM64)
         run: dotnet build src/Lagerfeuer/Lagerfeuer.csproj -c Release -p:Platform=ARM64
+
+  # Baut aus installer/Lagerfeuer.nsi ein Probe-Setup mit winziger Nutzlast und prüft, dass es keine fremden
+  # Programme startet, die neben ihm liegen (tests/installer/Test-Installer.ps1).
+  installer:
+    name: Setup-Prüfung
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: NSIS bereitstellen
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      - name: Setup prüfen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tests/installer/Test-Installer.ps1 -Work (Join-Path $env:RUNNER_TEMP 'setup-pruefung')
