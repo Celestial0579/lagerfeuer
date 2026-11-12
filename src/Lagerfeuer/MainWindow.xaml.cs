@@ -139,6 +139,9 @@ public sealed partial class MainWindow : Window
             var file = await _updates.DownloadAsync(asset, progress);
 
             UpdateBar.Message = "Update wird installiert – Lagerfeuer startet gleich neu …";
+            // Der Start des Updates hält die Oberfläche an, bei einer frisch geladenen EXE auch einige Sekunden.
+            // Vorher kurz abgeben, damit diese Meldung schon gezeichnet ist und nicht die vom Download stehen bleibt.
+            await Task.Delay(100);
             // Erst starten, dann herunterfahren: Scheitert der Start, läuft die App samt Wiedergabe weiter.
             await UpdateInstallation.RunAsync(
                 launch: () => _updates.LaunchInstaller(file),
