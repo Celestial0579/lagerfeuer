@@ -99,6 +99,8 @@ Lagerfeuer fragt kurz nach dem Start und danach alle 12 Stunden die Releases-API
 
 Die automatische Prüfung lässt sich in den Einstellungen abschalten; dort gibt es auch „Jetzt nach Updates suchen“.
 
+Scheitert ein Update beim Herunterladen, beim Prüfen oder beim Start, läuft Lagerfeuer unverändert weiter, auch die Wiedergabe. Der Hinweis nennt den Grund und bietet „Erneut versuchen“ an.
+
 ## Bauen
 
 Voraussetzungen: Windows 10 1809+ / Windows 11, [.NET 10 SDK](https://dotnet.microsoft.com/download), für den Installer zusätzlich [NSIS](https://nsis.sourceforge.io) 3.x (`winget install NSIS.NSIS`).
