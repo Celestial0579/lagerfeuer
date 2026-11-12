@@ -64,7 +64,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Bücher **herunterladen**. Sie sind dann angeheftet, und die Cache-Bereinigung lässt sie in Ruhe.
   - Seite **Downloads**.
   - Die Admin-Berechtigung „Download“ wird respektiert.
-  - **Wiedergabe ohne Server:** Offline gehörte Zeit wird gespeichert und beim nächsten Online-Gang hochgeladen (`/api/session/local-all`).
+  - **Wiedergabe ohne Server:** Ist der Server nicht erreichbar, spielen heruntergeladene Bücher von der Platte. Das gilt auch, wenn ein Proxy davor 502, 503 oder 504 meldet. Offline gehörte Zeit wird gespeichert und hochgeladen, sobald der Server wieder da ist (`/api/session/local-all`).
   - **Start ohne Verbindung:** Downloads bleiben nutzbar, die Verbindung wird automatisch wiederhergestellt.
 - **Fortschritts-Sync**
   - Playback-Sessions mit Sync alle 15 s und bei Pause, Abschluss beim Beenden. Gehörte Zeit geht bei Netzfehlern nicht verloren.
@@ -123,7 +123,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 ### Tests
 
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
-- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
+- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade, Erkennung eines nicht erreichbaren Servers (auch hinter einem Proxy).
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
 - **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
