@@ -93,7 +93,7 @@ Den Handler für `audiobookshelf://` registriert Lagerfeuer beim ersten SSO-Logi
 
 Lagerfeuer fragt kurz nach dem Start und danach alle 12 Stunden die Releases-API von GitHub (`releases/latest`) nach einer neueren Version. Entwürfe und Vorabversionen werden ignoriert. Gibt es ein Update, erscheint oben ein Hinweis mit drei Möglichkeiten:
 - **Jetzt aktualisieren:**
-  1. Lagerfeuer lädt die passende Datei herunter und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert. Liefert GitHub keine Prüfsumme, wird nichts geladen und nichts installiert.
+  1. Lagerfeuer lädt die passende Datei herunter und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert. Liefert GitHub keine Prüfsumme, wird nichts geladen und nichts installiert. Danach prüft es am Kopf der Datei, ob sie ein Windows-Programm für diesen Rechner ist; was keines ist, wird verworfen.
   2. Die installierte Version führt das Setup still aus (`/S /RESTART`); die portable EXE tauscht sich selbst aus. Scheitert der Tausch, liegt danach wieder die bisherige EXE an ihrem Platz.
   3. Danach startet Lagerfeuer neu.
 - **Was ist neu?** öffnet die Release-Seite.
@@ -124,7 +124,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
 - **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
-- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
+- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
 
 ```bash

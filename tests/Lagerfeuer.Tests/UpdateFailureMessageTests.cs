@@ -18,7 +18,7 @@ public sealed class UpdateFailureMessageTests : IDisposable
 
     private readonly TempDir _dir = new();
 
-    private static readonly byte[] Bytes = "neues Setup"u8.ToArray();
+    private static readonly byte[] Bytes = TestProgram.Bytes(TestProgram.X86, "neues Setup");
     private static readonly string Digest = Convert.ToHexString(SHA256.HashData(Bytes));
 
     private string Exe => Path.Combine(_dir.Path, "Lagerfeuer.exe");
