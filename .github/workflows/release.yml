@@ -2,8 +2,11 @@
 #   git tag v0.2.0 && git push origin v0.2.0
 # Der eingebaute Updater der App holt sich die Dateien aus diesem Release.
 #
-# Optionales Code-Signing: Repository-Secrets SIGNING_CERT_PFX_BASE64 (PFX als Base64) und
-# SIGNING_CERT_PASSWORD hinterlegen – dann werden App, portable EXE, Setup und Deinstaller signiert.
+# Signiert wird derzeit nicht. Die Schritte „Code-Signing vorbereiten“ und „Signaturzertifikat entfernen“
+# setzen ein Zertifikat als Datei voraus (Secrets SIGNING_CERT_PFX_BASE64 und SIGNING_CERT_PASSWORD). Solche
+# Dateien geben öffentliche Aussteller seit dem 1.6.2023 nicht mehr aus: Der Schlüssel muss in Hardware oder
+# bei einem Signaturdienst liegen. Mit einem heute ausgestellten Zertifikat lassen sich diese Schritte also
+# nicht nutzen. Welcher Weg sie ersetzt, ist noch nicht entschieden (README, „Roadmap“).
 name: Release
 
 on:
