@@ -65,7 +65,7 @@ public sealed partial class DownloadsPage : Page
                 Author = item.Author ?? "",
                 CanPlay = offline || !App.IsOffline,
                 StatusText = (offline ? (pinned ? "Heruntergeladen" : "Vollständig zwischengespeichert") : "Unvollständig")
-                             + $" · {sizes[item.LibraryItemId] / 1024d / 1024:0} MB · {Format.Duration(item.Duration)}",
+                             + $" · {Format.Size(sizes[item.LibraryItemId])} · {Format.Duration(item.Duration)}",
             };
             if (!pinned)
             {
@@ -87,7 +87,7 @@ public sealed partial class DownloadsPage : Page
         EmptyState.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var total = sizes.Values.Sum();
         SummaryText.Text = _items.Count == 0 ? ""
-            : $"{_items.Count} Bücher · {total / 1024d / 1024 / 1024:0.0} GB auf diesem Gerät" +
+            : $"{Format.Count(_items.Count, "Buch", "Bücher")} · {Format.Size(total)} auf diesem Gerät" +
               (App.IsOffline ? " · Offline – nur diese Bücher sind verfügbar." : "");
     }
 
