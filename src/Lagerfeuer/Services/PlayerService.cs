@@ -183,9 +183,17 @@ public sealed partial class PlayerService : ObservableObject
         catch (Exception ex)
         {
             Log.Error($"Wiedergabe von {itemId} fehlgeschlagen", ex);
-            ErrorMessage = ex is AbsApiException { Status: System.Net.HttpStatusCode.NotFound }
-                ? "Dieses Buch kann nicht abgespielt werden – der Server hat keine Audiodateien dafür (z. B. nur E-Book)."
-                : ex.Message;
+            ErrorMessage = ex switch
+            {
+                // Antwort des Servers selbst: Das Buch gibt es dort nicht oder es hat keine Audiodateien.
+                AbsApiException { Status: System.Net.HttpStatusCode.NotFound, ServerUnreachable: false }
+                    => "Dieses Buch kann nicht abgespielt werden – der Server hat keine Audiodateien dafür (z. B. nur E-Book).",
+                // Ein Proxy davor meldet, dass der Server fehlt. Ein heruntergeladenes Buch hätte hier schon gespielt.
+                AbsApiException { ServerUnreachable: true, Status: { } status }
+                    => $"Der Audiobookshelf-Server ist gerade nicht erreichbar (ein Proxy davor antwortet mit {(int)status}). " +
+                       "Heruntergeladene Bücher kannst du weiter hören.",
+                _ => ex.Message,
+            };
             await StopAsync();
         }
         finally
@@ -196,7 +204,8 @@ public sealed partial class PlayerService : ObservableObject
 
     /// <summary>
     /// Startet eine Session am Server – oder, wenn dieser nicht erreichbar ist und das Buch vollständig
-    /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird.
+    /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird. Nicht erreichbar heißt: keine
+    /// Verbindung, oder ein Proxy davor meldet, dass der Server fehlt (<see cref="AbsApiException.ServerUnreachable"/>).
     /// </summary>
     private async Task<PlaybackSession> StartSessionAsync(string itemId, string? episodeId)
     {
@@ -208,7 +217,7 @@ public sealed partial class PlayerService : ObservableObject
             {
                 return await _api.StartPlaybackAsync(itemId, _settings.DeviceId, episodeId);
             }
-            catch (AbsApiException ex) when (ex.Status is null && episodeId is null && CanPlayOffline(itemId))
+            catch (AbsApiException ex) when (ex.ServerUnreachable && episodeId is null && CanPlayOffline(itemId))
             {
                 Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {itemId} offline.");
             }
@@ -391,8 +400,16 @@ public sealed partial class PlayerService : ObservableObject
         OnPropertyChanged(nameof(Chapters));
     }
 
-    /// <summary>Beim Beenden der App: Session sauber schließen (mit Zeitlimit).</summary>
-    public async Task ShutdownAsync()
+    private RunOnce? _shutdown;
+
+    /// <summary>
+    /// Beim Beenden der App: Session sauber schließen (mit Zeitlimit). Läuft je Instanz nur einmal, gleich
+    /// wie oft und von wo es angestoßen wird (Fenster schließen, Update); weitere Aufrufe warten auf denselben
+    /// Vorgang.
+    /// </summary>
+    public Task ShutdownAsync() => (_shutdown ??= new RunOnce(ShutdownCoreAsync)).RunAsync();
+
+    private async Task ShutdownCoreAsync()
     {
         _settings.Save();
         await Task.WhenAny(StopAsync(), Task.Delay(TimeSpan.FromSeconds(4)));
@@ -694,7 +711,7 @@ public sealed partial class PlayerService : ObservableObject
             await _api.SyncSessionAsync(session.Id, current, listened, Duration);
             ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
         }
-        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
+        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound && !ex.ServerUnreachable)
         {
             // Session ist am Server nicht mehr offen (Neustart oder > 36 h inaktiv) → neue Session,
             // Wiedergabe läuft lokal ungestört weiter. Tracks/URLs bleiben identisch.

@@ -189,10 +189,10 @@ public sealed partial class MainWindow : Window
             var file = await _updates.DownloadAsync(asset, progress);
 
             UpdateBar.Message = "Update wird installiert – Lagerfeuer startet gleich neu …";
-            // Der Start des Updates hält die Oberfläche an, bei einer frisch geladenen EXE auch einige Sekunden.
-            // Vorher kurz abgeben, damit diese Meldung schon gezeichnet ist und nicht die vom Download stehen bleibt.
-            await Task.Delay(100);
             // Erst starten, dann herunterfahren: Scheitert der Start, läuft die App samt Wiedergabe weiter.
+            // Der Start läuft im Hintergrund (bei einer frisch geladenen EXE dauert er viele Sekunden);
+            // das Fenster bleibt so lange bedienbar, die Knöpfe der Leiste sind gesperrt, und schließen lässt
+            // es sich in dieser Zeit nicht (_closeGate).
             await UpdateInstallation.RunAsync(
                 launch: () => _updates.LaunchInstaller(file),
                 shutdownAsync: Player.ShutdownAsync,
@@ -200,7 +200,8 @@ public sealed partial class MainWindow : Window
                 {
                     _shutdownDone = true;
                     Application.Current.Exit();
-                });
+                },
+                gate: _closeGate);
         }
         catch (Exception ex)
         {
@@ -496,10 +497,23 @@ public sealed partial class MainWindow : Window
         ErrorBar.IsOpen = true;
     }
 
+    private string? _playerErrorShown;
+
     private void OnPlayerPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(PlayerService.ErrorMessage) && Player.ErrorMessage is { } msg)
+        if (e.PropertyName != nameof(PlayerService.ErrorMessage)) return;
+        if (Player.ErrorMessage is { } msg)
+        {
+            _playerErrorShown = msg;
             ShowError(msg);
+        }
+        else if (_playerErrorShown is { } shown)
+        {
+            // Der Player hat seinen Fehler zurückgenommen (neuer Versuch): Die Leiste zeigt ihn nicht weiter.
+            // Eine andere Meldung, die inzwischen dort steht, bleibt.
+            _playerErrorShown = null;
+            if (ErrorBar.IsOpen && ErrorBar.Message == shown) ErrorBar.IsOpen = false;
+        }
     }
 
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
@@ -525,10 +539,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private readonly UpdateCloseGate _closeGate = new();
+
     private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         if (_shutdownDone) return;
         args.Cancel = true;
+        // Startet gerade ein Update, bleibt das Fenster offen: Der Prozess darf nicht mitten im Tausch der EXE
+        // enden, und die App beendet sich danach selbst. Ein zweiter Klick, während das Herunterfahren läuft,
+        // stößt nichts Neues an: Der erste schließt.
+        if (_closeGate.RequestClose() != CloseRequest.Proceed) return;
         try { await Player.ShutdownAsync(); }
         catch (Exception ex) { Log.Error("Fehler beim Beenden", ex); }
         _shutdownDone = true;

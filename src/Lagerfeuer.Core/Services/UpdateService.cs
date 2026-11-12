@@ -183,7 +183,65 @@ public sealed class UpdateService
             File.Delete(target);
             throw new InvalidOperationException("Die Prüfsumme des Updates stimmt nicht – Download verworfen.");
         }
+
+        // Die Prüfsumme sagt nur, dass die Datei so ankam, wie sie im Release liegt. Ob sie ein Programm ist,
+        // zeigt erst ihr Kopf. Ohne diese Prüfung bekäme Windows die Datei zum Start, und für etwas, das kein
+        // Programm ist, zeigt es einen eigenen Dialog, hinter dem die App wartet.
+        if (!IsWindowsProgram(target, _portable, _rid))
+        {
+            File.Delete(target);
+            throw new InvalidOperationException(
+                "Die heruntergeladene Datei ist kein Windows-Programm für diesen Rechner – Download verworfen.");
+        }
         return target;
+    }
+
+    private const ushort MachineX86 = 0x014C, MachineX64 = 0x8664, MachineArm64 = 0xAA64;
+
+    /// <summary>
+    /// Ist die Datei ein Windows-Programm, das hier laufen kann? Geprüft wird nur der Kopf: „MZ“, der Verweis
+    /// auf den PE-Kopf, „PE\0\0“, die Prozessorart und dass es ein ausführbares Abbild und keine DLL ist.
+    ///
+    /// Die portable EXE muss zur Architektur der laufenden App passen (win-x64 oder win-arm64), denn sie tritt
+    /// an deren Stelle. Das Setup baut NSIS als 32-Bit-Programm, gleich für welche Architektur es installiert;
+    /// dort sind deshalb x86, x64 und ARM64 erlaubt.
+    /// </summary>
+    /// <param name="path">Pfad der heruntergeladenen Datei.</param>
+    /// <param name="portable">Portable EXE (true) oder Setup (false).</param>
+    /// <param name="rid">Architektur der laufenden App: „win-x64“ oder „win-arm64“.</param>
+    internal static bool IsWindowsProgram(string path, bool portable, string rid)
+    {
+        try
+        {
+            using var file = File.OpenRead(path);
+            Span<byte> dos = stackalloc byte[64];
+            if (file.ReadAtLeast(dos, dos.Length, throwOnEndOfStream: false) < dos.Length) return false;
+            if (dos[0] != (byte)'M' || dos[1] != (byte)'Z') return false;
+
+            // e_lfanew: Stelle des PE-Kopfs. Er liegt hinter dem DOS-Kopf und muss samt Dateikopf in die Datei passen.
+            var peOffset = BitConverter.ToInt32(dos[0x3C..0x40]);
+            const int peHeaderSize = 4 + 20; // Signatur + IMAGE_FILE_HEADER
+            if (peOffset < dos.Length || peOffset > file.Length - peHeaderSize) return false;
+
+            Span<byte> pe = stackalloc byte[peHeaderSize];
+            file.Position = peOffset;
+            if (file.ReadAtLeast(pe, pe.Length, throwOnEndOfStream: false) < pe.Length) return false;
+            if (pe[0] != (byte)'P' || pe[1] != (byte)'E' || pe[2] != 0 || pe[3] != 0) return false;
+
+            var machine = BitConverter.ToUInt16(pe[4..6]);
+            var characteristics = BitConverter.ToUInt16(pe[22..24]);
+            const ushort executableImage = 0x0002, dll = 0x2000;
+            if ((characteristics & executableImage) == 0 || (characteristics & dll) != 0) return false;
+
+            return portable
+                ? machine == (rid == "win-arm64" ? MachineArm64 : MachineX64)
+                : machine is MachineX86 or MachineX64 or MachineArm64;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Nicht lesbar heißt hier: nicht geprüft, also nicht starten.
+            return false;
+        }
     }
 
     /// <summary>Startet die Installation des heruntergeladenen Updates. Danach muss sich die App beenden.</summary>

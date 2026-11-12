@@ -11,6 +11,39 @@ public sealed class AbsApiException(string message, HttpStatusCode? status = nul
     : Exception(message, inner)
 {
     public HttpStatusCode? Status { get; } = status;
+
+    /// <summary>Anfang des Antworttexts einer Fehlerantwort (höchstens 200 Zeichen). Null, wenn keine Antwort kam.</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>
+    /// Hat der Audiobookshelf-Server gar nicht geantwortet? Das gilt, wenn keine Verbindung zustande kam
+    /// (kein Status), und ebenso, wenn ein Proxy davor meldet, dass der Server dahinter fehlt: 502, 503, 504.
+    /// Dann darf ein heruntergeladenes Buch von der Platte spielen, als wäre der Server aus.
+    ///
+    /// Ein 404 zählt nur dazu, wenn die Antwort erkennbar von einem Proxy stammt (siehe
+    /// <see cref="LooksLikeProxyAnswer"/>). Audiobookshelf selbst antwortet mit 404, wenn es ein Buch nicht
+    /// gibt oder es keine Audiodateien hat; das ist eine Auskunft des Servers und kein Ausfall.
+    /// </summary>
+    public bool ServerUnreachable => Status switch
+    {
+        null => true,
+        HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout => true,
+        HttpStatusCode.NotFound => LooksLikeProxyAnswer(Detail),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Sieht der Antworttext nach einem Proxy aus statt nach Audiobookshelf? Erkannt werden nur zwei sichere
+    /// Fälle: eine HTML-Seite (nginx, Apache, IIS) und die Antwort von Traefik („404 page not found“), wenn es
+    /// zur Adresse keinen Dienst mehr gibt. Audiobookshelf antwortet auf seinen API-Pfaden mit kurzem Text oder
+    /// JSON. Im Zweifel gilt die Antwort als die des Servers.
+    /// </summary>
+    internal static bool LooksLikeProxyAnswer(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail)) return false;
+        var text = detail.TrimStart();
+        return text.StartsWith('<') || text.Contains("page not found", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>
@@ -122,9 +155,10 @@ public sealed class AbsApiClient : IDisposable
                 throw new AbsApiException($"Server antwortet mit {(int)resp.StatusCode}. Ist das ein Audiobookshelf-Server?", resp.StatusCode);
             return await resp.Content.ReadFromJsonAsync<ServerStatus>(Json, cts.Token) ?? new ServerStatus();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
         {
-            throw new AbsApiException($"Server nicht erreichbar: {ex.Message}", null, ex);
+            // NotSupportedException: Die Antwort ist kein JSON (etwa die Seite eines anderen Dienstes).
+            throw new AbsApiException(ConnectionFailure.Describe(ex, server), null, ex);
         }
     }
 
@@ -136,7 +170,16 @@ public sealed class AbsApiClient : IDisposable
             Content = JsonContent.Create(new { username, password }, options: Json),
         };
         req.Headers.Add("x-return-tokens", "true");
-        using var resp = await _http.SendAsync(req, cts.Token);
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.SendAsync(req, cts.Token);
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new AbsApiException(ConnectionFailure.Describe(ex, server), null, ex);
+        }
+        using var response = resp;
         if (resp.StatusCode == HttpStatusCode.Unauthorized)
             throw new AbsApiException("Benutzername oder Passwort ist falsch.", resp.StatusCode);
         await EnsureSuccessAsync(resp);
@@ -419,7 +462,9 @@ public sealed class AbsApiClient : IDisposable
         catch (Exception ex) when (ex is HttpRequestException or JsonException ||
                                    (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
-            throw new AbsApiException($"Serverfehler: {ex.Message}", null, ex);
+            // Hier hat der Server schon einmal geantwortet; unlesbares JSON heißt also nicht „falsche Adresse“.
+            throw new AbsApiException(
+                ex is JsonException ? "Die Antwort des Servers war nicht lesbar." : ConnectionFailure.Describe(ex, ServerUri), null, ex);
         }
     }
 
@@ -435,7 +480,7 @@ public sealed class AbsApiClient : IDisposable
         catch (Exception ex) when (ex is HttpRequestException ||
                                    (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
-            throw new AbsApiException($"Serverfehler: {ex.Message}", null, ex);
+            throw new AbsApiException(ConnectionFailure.Describe(ex, ServerUri), null, ex);
         }
     }
 
@@ -455,7 +500,7 @@ public sealed class AbsApiClient : IDisposable
         if (detail.Length > 200) detail = detail[..200];
         throw new AbsApiException(
             $"Server meldet {(int)resp.StatusCode} {resp.ReasonPhrase}{(detail.Length > 0 ? ": " + detail : "")}",
-            resp.StatusCode);
+            resp.StatusCode) { Detail = detail };
     }
 
     private static CancellationTokenSource WithTimeout(CancellationToken ct)

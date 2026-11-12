@@ -89,6 +89,11 @@ public partial class App : Application
         Player.AttachCallDetector(Calls);
         if (Settings.PauseOnCalls) _ = Calls.StartAsync();
         LiveSync.ProgressUpdated += (_, p) => dispatcher.TryEnqueue(() => OnRemoteProgress(p));
+        // Der Server ist (wieder) da: offline gehörte Zeit gleich nachmelden, nicht erst beim nächsten Start.
+        LiveSync.ConnectionChanged += (_, connected) =>
+        {
+            if (connected) dispatcher.TryEnqueue(() => { if (!IsOffline) _ = UploadOfflineSessionsAsync(); });
+        };
         LiveSync.UserUpdated += (_, user) => dispatcher.TryEnqueue(() =>
         {
             Progress.Reset(user.MediaProgress);
@@ -120,9 +125,17 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Lädt offline gehörte Sessions zum Server hoch (still; bei Fehlern beim nächsten Mal).</summary>
+    private static bool _uploadingOfflineSessions;
+
+    /// <summary>
+    /// Lädt offline gehörte Sessions zum Server hoch (still; bei Fehlern beim nächsten Mal). Anlässe: Anmeldung,
+    /// Ende einer Offline-Wiedergabe und die Rückkehr der Live-Verbindung. Wird nur im Thread der Oberfläche
+    /// aufgerufen; läuft schon ein Upload, kommt kein zweiter dazu.
+    /// </summary>
     public static async Task UploadOfflineSessionsAsync()
     {
+        if (_uploadingOfflineSessions) return;
+        _uploadingOfflineSessions = true;
         try
         {
             if (LocalSessions.Pending.Count == 0) return;
@@ -136,6 +149,10 @@ public partial class App : Application
         catch (Exception ex)
         {
             Log.Error("Offline-Sessions konnten nicht hochgeladen werden", ex);
+        }
+        finally
+        {
+            _uploadingOfflineSessions = false;
         }
     }
 
