@@ -37,6 +37,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - per **SSO** (OpenID Connect, z.B. Authentik) im **Standardbrowser**. Eine bestehende Sitzung beim Identity Provider wird mitgenutzt.
   - JWT-Access-Token plus rotierendes Refresh-Token, die bei Ablauf automatisch erneuert werden. Die Tokens liegen DPAPI-verschlüsselt im Benutzerprofil.
   - Angemeldete Geräte einsehen und einzeln abmelden, „Auf allen Geräten abmelden“.
+  - Scheitert die Verbindung, nennt die Meldung den Grund in einem deutschen Satz, etwa wenn der Server kein HTTPS spricht oder das Zertifikat nicht vertrauenswürdig ist.
 - **Bibliothek**
   - „Weiterhören“ über alle Bibliotheken hinweg, inklusive angefangener Podcast-Folgen.
   - Bücher, **Serien** und **Autoren** mit eigenen Seiten. Serien erscheinen in Lesereihenfolge, Autoren mit Bild, Beschreibung und Serien.
@@ -63,7 +64,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Bücher **herunterladen**. Sie sind dann angeheftet, und die Cache-Bereinigung lässt sie in Ruhe.
   - Seite **Downloads**.
   - Die Admin-Berechtigung „Download“ wird respektiert.
-  - **Wiedergabe ohne Server:** Offline gehörte Zeit wird gespeichert und beim nächsten Online-Gang hochgeladen (`/api/session/local-all`).
+  - **Wiedergabe ohne Server:** Ist der Server nicht erreichbar, spielen heruntergeladene Bücher von der Platte. Das gilt auch, wenn ein Proxy davor 502, 503 oder 504 meldet. Offline gehörte Zeit wird gespeichert und hochgeladen, sobald der Server wieder da ist (`/api/session/local-all`).
   - **Start ohne Verbindung:** Downloads bleiben nutzbar, die Verbindung wird automatisch wiederhergestellt.
 - **Fortschritts-Sync**
   - Playback-Sessions mit Sync alle 15 s und bei Pause, Abschluss beim Beenden. Gehörte Zeit geht bei Netzfehlern nicht verloren.
@@ -122,10 +123,11 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 ### Tests
 
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
-- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
+- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade, Erkennung eines nicht erreichbaren Servers (auch hinter einem Proxy).
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
 - **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner, Start im Hintergrund, einmaliges Herunterfahren, Schließen des Fensters während des Starts.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
+- **Meldungen bei Verbindungsfehlern:** kein HTTPS, Zertifikat, unbekannter Name, abgelehnte Verbindung, Zeitüberschreitung, kein Audiobookshelf-Server.
 
 ```bash
 dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj

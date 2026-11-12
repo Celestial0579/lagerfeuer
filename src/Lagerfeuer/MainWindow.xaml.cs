@@ -427,10 +427,23 @@ public sealed partial class MainWindow : Window
         ErrorBar.IsOpen = true;
     }
 
+    private string? _playerErrorShown;
+
     private void OnPlayerPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(PlayerService.ErrorMessage) && Player.ErrorMessage is { } msg)
+        if (e.PropertyName != nameof(PlayerService.ErrorMessage)) return;
+        if (Player.ErrorMessage is { } msg)
+        {
+            _playerErrorShown = msg;
             ShowError(msg);
+        }
+        else if (_playerErrorShown is { } shown)
+        {
+            // Der Player hat seinen Fehler zurückgenommen (neuer Versuch): Die Leiste zeigt ihn nicht weiter.
+            // Eine andere Meldung, die inzwischen dort steht, bleibt.
+            _playerErrorShown = null;
+            if (ErrorBar.IsOpen && ErrorBar.Message == shown) ErrorBar.IsOpen = false;
+        }
     }
 
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)

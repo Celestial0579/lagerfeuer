@@ -25,8 +25,10 @@ public sealed partial class LoginPage : Page
 
         if (args?.Message is { } msg) ShowMessage(msg, InfoBarSeverity.Warning, args.CanRetry);
 
-        // Bekannter Server → Anmeldemethoden direkt abfragen.
-        if (!string.IsNullOrWhiteSpace(ServerBox.Text) && args?.CanRetry != true) _ = ConnectAsync();
+        // Bekannter Server → Anmeldemethoden direkt abfragen. Ein mitgegebener Hinweis (etwa „Die Anmeldung
+        // ist abgelaufen“) bleibt dabei stehen; sonst wäre er weg, bevor ihn jemand lesen kann.
+        if (!string.IsNullOrWhiteSpace(ServerBox.Text) && args?.CanRetry != true)
+            _ = ConnectAsync(keepMessage: args?.Message is not null);
     }
 
     private void ShowMessage(string message, InfoBarSeverity severity, bool canRetry = false)
@@ -76,9 +78,10 @@ public sealed partial class LoginPage : Page
     private void OnLocalLogin(object sender, RoutedEventArgs e) => _ = LocalLoginAsync();
     private void OnSsoLogin(object sender, RoutedEventArgs e) => _ = SsoLoginAsync();
 
-    private async Task ConnectAsync()
+    /// <param name="keepMessage">Die Meldung, die gerade angezeigt wird, stehen lassen (Aufruf beim Öffnen der Seite).</param>
+    private async Task ConnectAsync(bool keepMessage = false)
     {
-        MessageBar.IsOpen = false;
+        if (!keepMessage) MessageBar.IsOpen = false;
         SetBusy(true);
         try
         {
@@ -106,6 +109,8 @@ public sealed partial class LoginPage : Page
         }
         catch (Exception ex)
         {
+            // Die Meldung ist ein kurzer Satz; die vollständige Ausnahme steht nur im Log.
+            Log.Error("Verbindung zum Server fehlgeschlagen", ex);
             ShowMessage(ex.Message, InfoBarSeverity.Error);
         }
         finally
@@ -133,6 +138,9 @@ public sealed partial class LoginPage : Page
         }
         catch (Exception ex)
         {
+            // Ein falsches Passwort ist kein Fall fürs Log, eine gescheiterte Verbindung schon.
+            if (ex is not AbsApiException { Status: System.Net.HttpStatusCode.Unauthorized })
+                Log.Error("Anmeldung fehlgeschlagen", ex);
             ShowMessage(ex.Message, InfoBarSeverity.Error);
         }
         finally
