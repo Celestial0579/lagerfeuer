@@ -133,10 +133,9 @@ public sealed partial class MainWindow : Window
             var file = await _updates.DownloadAsync(asset, progress);
 
             UpdateBar.Message = "Update wird installiert – Lagerfeuer startet gleich neu …";
-            // Der Start des Updates hält die Oberfläche an, bei einer frisch geladenen EXE auch einige Sekunden.
-            // Vorher kurz abgeben, damit diese Meldung schon gezeichnet ist und nicht die vom Download stehen bleibt.
-            await Task.Delay(100);
             // Erst starten, dann herunterfahren: Scheitert der Start, läuft die App samt Wiedergabe weiter.
+            // Der Start läuft im Hintergrund (bei einer frisch geladenen EXE dauert er viele Sekunden);
+            // das Fenster bleibt so lange bedienbar, die Knöpfe der Leiste sind gesperrt.
             await UpdateInstallation.RunAsync(
                 launch: () => _updates.LaunchInstaller(file),
                 shutdownAsync: Player.ShutdownAsync,
@@ -455,10 +454,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private bool _closeRequested;
+
     private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         if (_shutdownDone) return;
         args.Cancel = true;
+        // Ein zweiter Klick, während das Herunterfahren läuft, stößt nichts Neues an: Der erste schließt.
+        if (_closeRequested) return;
+        _closeRequested = true;
         try { await Player.ShutdownAsync(); }
         catch (Exception ex) { Log.Error("Fehler beim Beenden", ex); }
         _shutdownDone = true;

@@ -391,8 +391,16 @@ public sealed partial class PlayerService : ObservableObject
         OnPropertyChanged(nameof(Chapters));
     }
 
-    /// <summary>Beim Beenden der App: Session sauber schließen (mit Zeitlimit).</summary>
-    public async Task ShutdownAsync()
+    private RunOnce? _shutdown;
+
+    /// <summary>
+    /// Beim Beenden der App: Session sauber schließen (mit Zeitlimit). Läuft je Instanz nur einmal, gleich
+    /// wie oft und von wo es angestoßen wird (Fenster schließen, Update); weitere Aufrufe warten auf denselben
+    /// Vorgang.
+    /// </summary>
+    public Task ShutdownAsync() => (_shutdown ??= new RunOnce(ShutdownCoreAsync)).RunAsync();
+
+    private async Task ShutdownCoreAsync()
     {
         _settings.Save();
         await Task.WhenAny(StopAsync(), Task.Delay(TimeSpan.FromSeconds(4)));

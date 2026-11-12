@@ -124,7 +124,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
 - **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade.
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
-- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
+- **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner, Start im Hintergrund, einmaliges Herunterfahren.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
 
 ```bash
