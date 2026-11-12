@@ -65,15 +65,9 @@ public sealed partial class MainWindow : Window
 
     private void StartUpdateChecks()
     {
-        // Kurz nach dem Start und danach alle 12 Stunden.
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromSeconds(8);
-        timer.Tick += (t, _) =>
-        {
-            t.Interval = TimeSpan.FromHours(12);
-            if (App.Settings.AutoCheckUpdates) _ = CheckForUpdatesAsync(manual: false);
-        };
-        timer.Start();
+        // Kurz nach dem Start und danach alle 12 Stunden. Zeiten und Ablauf stehen in UpdateCheckSchedule.
+        _ = UpdateCheckSchedule.RunAsync(
+            () => App.Settings.AutoCheckUpdates ? CheckForUpdatesAsync(manual: false) : Task.CompletedTask);
     }
 
     /// <summary>Prüft auf Updates; liefert einen Statustext für die Einstellungsseite.</summary>
