@@ -112,6 +112,19 @@ public sealed class UpdateService
     /// </summary>
     public async Task<string> DownloadAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct = default)
     {
+        try
+        {
+            return await DownloadCoreAsync(asset, progress, ct);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException && !ct.IsCancellationRequested)
+        {
+            // Netz, Platte, Rechte. Die eigenen Meldungen sind InvalidOperationException und gehen unverändert durch.
+            throw Failure("Das Update ließ sich nicht herunterladen", ex);
+        }
+    }
+
+    private async Task<string> DownloadCoreAsync(UpdateAsset asset, IProgress<double>? progress, CancellationToken ct)
+    {
         if (asset.Sha256 is not { } expected || !IsSha256(expected))
             throw new InvalidOperationException(
                 "Für diese Version liefert GitHub keine Prüfsumme. Ohne Prüfung installiert Lagerfeuer nichts – " +
@@ -153,7 +166,11 @@ public sealed class UpdateService
     }
 
     /// <summary>Startet die Installation des heruntergeladenen Updates. Danach muss sich die App beenden.</summary>
-    public void LaunchInstaller(string downloadedFile)
+    public void LaunchInstaller(string downloadedFile) => LaunchInstaller(downloadedFile, Process.Start);
+
+    /// <param name="downloadedFile">Pfad der geprüften neuen Fassung.</param>
+    /// <param name="start">Für Tests: ersetzt <see cref="Process.Start(ProcessStartInfo)"/>.</param>
+    internal void LaunchInstaller(string downloadedFile, Func<ProcessStartInfo, Process?> start)
     {
         // Wie CheckAsync und DownloadAsync nach der Variante dieser Instanz, nicht nach der statischen Eigenschaft.
         if (_portable)
@@ -162,21 +179,27 @@ public sealed class UpdateService
             ReplaceExecutable(exe, downloadedFile);
             try
             {
-                Process.Start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
+                start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
             }
             catch (Exception ex)
             {
                 // Die neue EXE liegt schon am Platz, startet aber nicht: zurück zur bisherigen.
                 // Scheitert auch das, meldet RestoreExecutable selbst, wo die bisherige liegt.
                 RestoreExecutable(exe);
-                throw new InvalidOperationException(
-                    $"Die neue Version ließ sich nicht starten – Lagerfeuer bleibt bei der bisherigen. ({ex.Message})", ex);
+                throw Failure("Die neue Version ließ sich nicht starten", ex);
             }
         }
         else
         {
             // Das Setup wartet, bis sich die App beendet hat, und startet sie danach neu.
-            Process.Start(new ProcessStartInfo(downloadedFile, "/S /RESTART") { UseShellExecute = true });
+            try
+            {
+                start(new ProcessStartInfo(downloadedFile, "/S /RESTART") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                throw Failure("Das Setup ließ sich nicht starten", ex);
+            }
         }
         Log.Info($"Update gestartet: {downloadedFile}");
     }
@@ -206,8 +229,7 @@ public sealed class UpdateService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException(
-                $"Die laufende EXE ließ sich nicht umbenennen – das Update wurde nicht eingespielt. ({ex.Message})", ex);
+            throw Failure("Die laufende EXE ließ sich nicht umbenennen", ex);
         }
 
         try
@@ -224,8 +246,7 @@ public sealed class UpdateService
             {
                 throw new InvalidOperationException(StrandedMessage(exe, old), new AggregateException(ex, rollback));
             }
-            throw new InvalidOperationException(
-                $"Das Update ließ sich nicht einspielen – Lagerfeuer bleibt bei der bisherigen Version. ({ex.Message})", ex);
+            throw Failure("Das Update ließ sich nicht einspielen", ex);
         }
     }
 
@@ -250,6 +271,47 @@ public sealed class UpdateService
     private static string StrandedMessage(string exe, string old)
         => "Das Update ist gescheitert, und die bisherige Version ließ sich nicht an ihren Platz zurücklegen. " +
            $"Sie liegt unter „{old}“ – benenne sie von Hand wieder in „{Path.GetFileName(exe)}“ um.";
+
+    /// <summary>
+    /// Meldung für die Update-Leiste, immer gleich aufgebaut: was nicht ging, dass Lagerfeuer bei der bisherigen
+    /// Version bleibt, und ein kurzer Grund. Die ursprüngliche Ausnahme hängt an und landet so im Log. Ihr Text
+    /// ist englisch und nennt vollständige Pfade samt Kontonamen; in die Leiste gehört er nicht.
+    /// </summary>
+    private static InvalidOperationException Failure(string what, Exception cause)
+        => new($"{what} – Lagerfeuer bleibt bei der bisherigen Version. Grund: {FailureReason(cause)}.", cause);
+
+    /// <summary>Kurzer Grund auf Deutsch, ohne Pfade. Was hier nicht vorkommt, verweist auf das Log.</summary>
+    internal static string FailureReason(Exception ex) => ex switch
+    {
+        System.ComponentModel.Win32Exception w => WindowsReason(w.NativeErrorCode) ?? $"Windows-Fehler {w.NativeErrorCode}",
+        UnauthorizedAccessException => "Zugriff verweigert",
+        FileNotFoundException or DirectoryNotFoundException => "Datei nicht gefunden",
+        HttpIOException or IOException { InnerException: System.Net.Sockets.SocketException }
+            => "Verbindung zu GitHub abgebrochen",
+        IOException io => WindowsReason(Win32Code(io.HResult)) ?? "Fehler beim Zugriff auf die Datei",
+        HttpRequestException { StatusCode: { } status } => $"GitHub antwortet mit {(int)status}",
+        HttpRequestException => "keine Verbindung zu GitHub",
+        OperationCanceledException or TimeoutException => "Zeitüberschreitung",
+        _ => "unbekannt, Einzelheiten stehen im Log",
+    };
+
+    /// <summary>Die Windows-Fehler, die beim Laden, Tauschen und Starten vorkommen. Null: kein eigener Text.</summary>
+    private static string? WindowsReason(int code) => code switch
+    {
+        2 or 3 => "Datei nicht gefunden",                              // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
+        5 => "Zugriff verweigert",                                     // ERROR_ACCESS_DENIED
+        32 or 33 => "Datei wird von einem anderen Programm verwendet", // ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
+        39 or 112 => "Datenträger voll",                               // ERROR_HANDLE_DISK_FULL, ERROR_DISK_FULL
+        193 or 216 => "Datei ist kein lauffähiges Programm",           // ERROR_BAD_EXE_FORMAT, ERROR_EXE_MACHINE_TYPE_MISMATCH
+        225 or 226 => "vom Virenschutz blockiert",                     // ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED
+        1223 => "abgebrochen",                                         // ERROR_CANCELLED
+        1260 => "von einer Richtlinie des Systems blockiert",          // ERROR_ACCESS_DISABLED_BY_POLICY
+        _ => null,
+    };
+
+    /// <summary>Der Windows-Fehlercode aus einem HRESULT der Form 0x8007xxxx, sonst -1.</summary>
+    private static int Win32Code(int hresult)
+        => (hresult & unchecked((int)0xFFFF0000)) == unchecked((int)0x80070000) ? hresult & 0xFFFF : -1;
 
     /// <summary>Räumt Reste eines vorherigen Updates auf (beim Start aufrufen).</summary>
     public static void CleanupAfterUpdate()
