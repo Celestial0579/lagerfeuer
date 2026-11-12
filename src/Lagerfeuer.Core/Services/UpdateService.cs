@@ -118,9 +118,19 @@ public sealed class UpdateService
         // Alles andere im Release wird nicht angeboten, auch wenn es auf dieselbe Endung hört.
         var asset = release.Assets.FirstOrDefault(a => IsExpectedAssetName(a.Name, _portable, _rid));
 
-        return new UpdateInfo(version, release.Name is { Length: > 0 } n ? n : release.TagName, release.HtmlUrl,
+        return new UpdateInfo(version, release.Name is { Length: > 0 } n ? n : release.TagName, ReleasePage(release.HtmlUrl),
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
     }
+
+    /// <summary>
+    /// Die Seite des Release für den Link „Was ist neu?“. Die Adresse stammt aus der Antwort von GitHub und
+    /// wird beim Klick an Windows zum Öffnen gegeben. Ist sie keine Web-Adresse, steht dafür die Übersicht der
+    /// Releases (siehe <see cref="WebLinks"/>).
+    /// </summary>
+    internal static string ReleasePage(string? htmlUrl)
+        => Uri.TryCreate(htmlUrl, UriKind.Absolute, out var url) && WebLinks.IsWebAddress(url)
+            ? url.AbsoluteUri
+            : $"https://github.com/{RepositoryOwner}/{RepositoryName}/releases";
 
     /// <summary>
     /// Lädt das Update herunter und prüft die Prüfsumme. Gibt den lokalen Pfad zurück.

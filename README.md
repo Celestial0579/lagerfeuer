@@ -83,7 +83,7 @@ Das Farbschema (Glut, Funke, Stahl) ist an [firestrike.de](https://firestrike.de
 
 So läuft die Anmeldung ab:
 1. Lagerfeuer startet `/auth/openid` selbst, mit eigenem Cookie-Jar und PKCE.
-2. Die Login-Seite des Identity Providers öffnet sich im Standardbrowser. Bist du dort schon angemeldet, geht es ohne Eingabe weiter.
+2. Die Login-Seite des Identity Providers öffnet sich im Standardbrowser. Bist du dort schon angemeldet, geht es ohne Eingabe weiter. Ihre Adresse nennt der Server; Lagerfeuer öffnet sie nur, wenn sie eine Web-Adresse ist (http oder https), und bricht die Anmeldung sonst ab.
 3. Audiobookshelf leitet auf `audiobookshelf://oauth?code=…&state=…` weiter. Der Browser fragt einmalig, ob Lagerfeuer geöffnet werden darf.
 4. Windows startet Lagerfeuer. Diese Instanz reicht die URL an das laufende Fenster weiter und beendet sich sofort.
 5. Lagerfeuer tauscht den Code mit `code_verifier` und demselben Session-Cookie über `/auth/openid/callback` gegen Tokens.
@@ -123,7 +123,7 @@ Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeue
 ### Tests
 
 Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 getestet (`tests/Lagerfeuer.Tests`):
-- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade, Erkennung eines nicht erreichbaren Servers (auch hinter einem Proxy).
+- **API-Client:** Login, Token-Refresh inkl. Rotation und parallelen Anfragen, abgelaufene Sitzung, Unterpfade, Erkennung eines nicht erreichbaren Servers (auch hinter einem Proxy), SSO-Anmeldung und Update-Hinweis öffnen nur Web-Adressen.
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
 - **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Prüfung, dass die Datei ein Windows-Programm ist, Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner, Start im Hintergrund, einmaliges Herunterfahren, Schließen des Fensters während des Starts.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**

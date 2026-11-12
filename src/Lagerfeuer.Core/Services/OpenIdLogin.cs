@@ -31,21 +31,25 @@ public static class OpenIdLogin
 {
     public const string RedirectUri = "audiobookshelf://oauth";
 
-    public static async Task<LoginResponse?> LoginAsync(AbsApiClient api, Uri server, CancellationToken ct = default)
+    public static Task<LoginResponse?> LoginAsync(AbsApiClient api, Uri server, CancellationToken ct = default)
+        // Eigener HttpClient: Cookie-Jar für die ABS-Session, Redirects nicht automatisch folgen.
+        => LoginAsync(api, server, new SocketsHttpHandler
+        {
+            CookieContainer = new CookieContainer(),
+            UseCookies = true,
+            AllowAutoRedirect = false,
+        }, OpenInBrowser, ct);
+
+    /// <param name="handler">Zugang zum Server; für Tests von außen vorgegeben. Wird am Ende freigegeben.</param>
+    /// <param name="openBrowser">Öffnet die Anmeldeseite; für Tests von außen vorgegeben.</param>
+    internal static async Task<LoginResponse?> LoginAsync(AbsApiClient api, Uri server, HttpMessageHandler handler,
+        Action<Uri> openBrowser, CancellationToken ct = default)
     {
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(32));
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
         var state = Base64Url(RandomNumberGenerator.GetBytes(16));
 
-        // Eigener HttpClient: Cookie-Jar für die ABS-Session, Redirects nicht automatisch folgen.
-        var cookies = new CookieContainer();
-        using var http = new HttpClient(new SocketsHttpHandler
-        {
-            CookieContainer = cookies,
-            UseCookies = true,
-            AllowAutoRedirect = false,
-        })
-        { Timeout = TimeSpan.FromSeconds(30) };
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
         // Schritt 1
         var startUrl = api.Resolve(
@@ -68,9 +72,7 @@ public static class OpenIdLogin
                       "Einstellungen → Authentifizierung bei den erlaubten Mobile-Redirect-URIs eintragen."
                     : $"SSO konnte nicht gestartet werden ({(int)resp.StatusCode}): {body}", resp.StatusCode);
             }
-            authorizeUrl = resp.Headers.Location.IsAbsoluteUri
-                ? resp.Headers.Location
-                : new Uri(startUrl, resp.Headers.Location);
+            authorizeUrl = ResolveAuthorizeUrl(startUrl, resp.Headers.Location);
         }
 
         // Schritte 2 + 3
@@ -81,7 +83,7 @@ public static class OpenIdLogin
         Uri callback;
         try
         {
-            OpenInBrowser(authorizeUrl);
+            openBrowser(authorizeUrl);
             // ABS hält den state nur 10 Minuten vor.
             callback = await pending.Task.WaitAsync(TimeSpan.FromMinutes(10), ct);
         }
@@ -154,8 +156,25 @@ public static class OpenIdLogin
         if (_lastAuthorizeUrl is { } url) OpenInBrowser(url);
     }
 
-    private static void OpenInBrowser(Uri url)
-        => Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true });
+    /// <summary>
+    /// Die Adresse der Anmeldeseite aus der Antwort des Servers (Kopfzeile Location), bei Bedarf ergänzt um die
+    /// Adresse der Anfrage.
+    ///
+    /// Sie kommt vom Server und geht an Windows zum Öffnen. Angenommen wird deshalb nur eine Web-Adresse: Mit
+    /// „file:“ ließe ein Server sonst ein Programm auf diesem Rechner oder einer Netzfreigabe starten, mit
+    /// anderen Schemata andere Anwendungen aufrufen.
+    /// </summary>
+    internal static Uri ResolveAuthorizeUrl(Uri startUrl, Uri location)
+    {
+        var url = location.IsAbsoluteUri ? location : new Uri(startUrl, location);
+        if (!WebLinks.IsWebAddress(url))
+            throw new AbsApiException(
+                "Der Server nennt als Anmeldeseite keine Web-Adresse (http oder https). " +
+                "Die SSO-Anmeldung wurde abgebrochen, geöffnet wurde nichts.");
+        return url;
+    }
+
+    private static void OpenInBrowser(Uri url) => Process.Start(WebLinks.OpenInBrowser(url));
 
     private static async Task<string> SafeReadAsync(HttpResponseMessage resp)
     {
