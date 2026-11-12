@@ -153,6 +153,51 @@ public sealed class UpdateFailureMessageTests : IDisposable
         Assert.True(seen.UseShellExecute);
     }
 
+    // ---------- Suche nach Updates (Einstellungsseite: „Update-Prüfung fehlgeschlagen: …“) ----------
+
+    [Fact]
+    public async Task Suche_KeineVerbindung_NenntDenGrundOhneLaufzeitText()
+    {
+        var service = Create(_ => throw new HttpRequestException("No such host is known. (api.github.com:443)"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("Keine Verbindung zu GitHub.", ex.Message);
+        Assert.IsType<HttpRequestException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task Suche_AntwortIstKeinJson_VerweistAufDasLog()
+    {
+        var service = Create(_ => FakeHandler.Json("<html>Wartung</html>"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("Unbekannt, Einzelheiten stehen im Log.", ex.Message);
+        Assert.NotNull(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task Suche_EigeneMeldungBleibtWieSieIst()
+    {
+        var service = Create(_ => FakeHandler.Status(HttpStatusCode.Forbidden));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("GitHub antwortet mit 403.", ex.Message);
+        Assert.Null(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task Suche_Abgebrochen_BleibtEinAbbruch()
+    {
+        var service = Create(_ => FakeHandler.Json("{}"));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CheckAsync(cts.Token));
+    }
+
     // ---------- Download ----------
 
     [Fact]

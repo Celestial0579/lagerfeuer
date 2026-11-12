@@ -89,6 +89,20 @@ public sealed class UpdateService
 
     public async Task<UpdateInfo?> CheckAsync(CancellationToken ct = default)
     {
+        try
+        {
+            return await CheckCoreAsync(ct);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException && !ct.IsCancellationRequested)
+        {
+            // Die Einstellungsseite zeigt die Meldung hinter „Update-Prüfung fehlgeschlagen:“.
+            var reason = FailureReason(ex);
+            throw new InvalidOperationException(char.ToUpperInvariant(reason[0]) + reason[1..] + ".", ex);
+        }
+    }
+
+    private async Task<UpdateInfo?> CheckCoreAsync(CancellationToken ct)
+    {
         using var resp = await _http.GetAsync(
             $"https://api.github.com/repos/{RepositoryOwner}/{RepositoryName}/releases/latest", ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // noch kein Release
