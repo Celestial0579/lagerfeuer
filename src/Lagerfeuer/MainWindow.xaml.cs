@@ -27,7 +27,8 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new SizeInt32(1280, 860));
+        PlaceWindow();
+        AppWindow.Changed += OnAppWindowChanged;
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.Closing += OnAppWindowClosing;
@@ -45,6 +46,61 @@ public sealed partial class MainWindow : Window
 
     private readonly TaskbarIntegration _taskbar;
     private MiniPlayerWindow? _miniPlayer;
+
+    // ---------- Größe und Lage des Fensters ----------
+
+    /// <summary>Skalierung des Bildschirms, auf dem das Fenster liegt (1.0 bei 100 %).</summary>
+    private double WindowScale()
+    {
+        var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        return dpi > 0 ? dpi / 96.0 : 1.0;
+    }
+
+    /// <summary>
+    /// Beim Start: die zuletzt gewählte Größe (sonst 1280 × 860 bei 100 %), nie größer als der Arbeitsbereich
+    /// des Bildschirms, mittig darin. War das Fenster zuletzt maximiert, ist es das wieder.
+    /// </summary>
+    private void PlaceWindow()
+    {
+        try
+        {
+            var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+            var rect = WindowPlacement.Initial(new WindowRect(area.X, area.Y, area.Width, area.Height), WindowScale(),
+                App.Settings.WindowWidth, App.Settings.WindowHeight);
+            AppWindow.MoveAndResize(new RectInt32(rect.X, rect.Y, rect.Width, rect.Height));
+            if (App.Settings.WindowMaximized && AppWindow.Presenter is OverlappedPresenter presenter) presenter.Maximize();
+        }
+        catch (Exception ex)
+        {
+            // An der Fenstergröße soll der Start nicht scheitern.
+            Log.Error("Fenstergröße konnte nicht gesetzt werden", ex);
+            AppWindow.Resize(new SizeInt32(WindowPlacement.DefaultWidth, WindowPlacement.DefaultHeight));
+        }
+    }
+
+    /// <summary>
+    /// Merkt sich Größe und „maximiert“ in den Einstellungen. Gespeichert werden sie beim Beenden mit allen
+    /// übrigen. Die Größe eines maximierten oder minimierten Fensters wird nicht übernommen.
+    /// </summary>
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidSizeChange && !args.DidPresenterChange) return;
+        if (sender.Presenter is not OverlappedPresenter presenter) return;
+        switch (presenter.State)
+        {
+            case OverlappedPresenterState.Maximized:
+                App.Settings.WindowMaximized = true;
+                break;
+            case OverlappedPresenterState.Restored:
+                App.Settings.WindowMaximized = false;
+                (App.Settings.WindowWidth, App.Settings.WindowHeight) =
+                    WindowPlacement.ToSaved(sender.Size.Width, sender.Size.Height, WindowScale());
+                break;
+        }
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    private static partial uint GetDpiForWindow(nint hwnd);
 
     /// <summary>Öffnet den kompakten Mini-Player (immer im Vordergrund).</summary>
     public void ShowMiniPlayer()
@@ -314,7 +370,21 @@ public sealed partial class MainWindow : Window
         ContentFrame.BackStack.Clear();
         Nav.SelectedItem = Nav.MenuItems[0];
         ContentFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
+        FocusNavigation();
     }
+
+    /// <summary>
+    /// Setzt den Tastaturfokus auf den gewählten Eintrag der Navigation.
+    ///
+    /// Nach dem Anmelden lag der Fokus auf der Anmeldeseite. Verschwindet sie, sucht sich das Fenster das erste
+    /// fokussierbare Element. Das war der Knopf „Jetzt aktualisieren“, wenn gerade ein Update angeboten wird:
+    /// Leertaste oder Eingabetaste hätten dann das Update gestartet statt die Wiedergabe.
+    /// </summary>
+    private void FocusNavigation()
+        => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (Nav.SelectedItem is NavigationViewItem item) item.Focus(FocusState.Programmatic);
+        });
 
     public async Task LogoutAsync(bool allDevices = false)
     {

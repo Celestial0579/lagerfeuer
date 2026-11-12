@@ -454,7 +454,24 @@ public sealed class AuthSession
         get
         {
             var d = DeviceInfo;
-            var parts = new[] { d?.BrowserName, d?.OsName is null ? null : $"{d.OsName} {d.OsVersion}".Trim(), d?.Model }
+            var os = d?.OsName is null ? null : $"{d.OsName} {d.OsVersion}".Trim();
+
+            // Lagerfeuer selbst. Der Server liest aus dem User-Agent nur das Betriebssystem, den Namen der App
+            // kennt er nicht. Bis 0.2.1 hieß der User-Agent „Lagerfeuer-Windows/0.1“; daraus machte der Server
+            // das Betriebssystem „Windows 0.1“.
+            const string legacy = "Lagerfeuer-Windows/", current = "Lagerfeuer/";
+            if (UserAgent is { } agent)
+            {
+                if (agent.StartsWith(legacy, StringComparison.Ordinal)) return "Lagerfeuer · Windows";
+                if (agent.StartsWith(current, StringComparison.Ordinal))
+                {
+                    var version = agent[current.Length..].Split(' ', 2)[0];
+                    var app = version.Length > 0 ? $"Lagerfeuer {version}" : "Lagerfeuer";
+                    return string.IsNullOrWhiteSpace(os) ? app : $"{app} · {os}";
+                }
+            }
+
+            var parts = new[] { d?.BrowserName, os, d?.Model }
                 .Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
             if (parts.Count > 0) return string.Join(" · ", parts);
             return string.IsNullOrWhiteSpace(UserAgent) ? "Unbekanntes Gerät" : UserAgent!;

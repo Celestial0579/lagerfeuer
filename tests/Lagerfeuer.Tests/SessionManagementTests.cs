@@ -27,7 +27,7 @@ public class SessionManagementTests
 
         Assert.Equal("/api/me/sessions", handler.Requests.Single().RequestUri!.AbsolutePath);
         Assert.True(sessions[0].Current);
-        Assert.Equal("Lagerfeuer-Windows/0.1", sessions[0].DisplayName); // ohne deviceInfo → User-Agent
+        Assert.Equal("Lagerfeuer · Windows", sessions[0].DisplayName); // User-Agent der Fassungen bis 0.2.1
         Assert.Equal("Firefox · Linux", sessions[1].DisplayName);
     }
 

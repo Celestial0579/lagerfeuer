@@ -87,7 +87,23 @@ public sealed class AbsApiClient : IDisposable
     {
         // Kein globales Timeout: Audio-Downloads laufen lange. API-Aufrufe nutzen ApiTimeout.
         _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Lagerfeuer-Windows/0.1");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+    }
+
+    /// <summary>
+    /// Der User-Agent aller Anfragen an den Server, etwa „Lagerfeuer/0.2.2 (Windows NT 10.0; Win64; x64)“.
+    /// Audiobookshelf liest daraus das Betriebssystem für die Liste der angemeldeten Geräte. Bis 0.2.1 stand
+    /// hier fest „Lagerfeuer-Windows/0.1“, und die Liste zeigte „Windows 0.1“.
+    /// </summary>
+    public static string UserAgent { get; } = BuildUserAgent(
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(0, 0, 0),
+        System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
+
+    internal static string BuildUserAgent(Version version, System.Runtime.InteropServices.Architecture architecture)
+    {
+        var numbers = new Version(version.Major, Math.Max(0, version.Minor), Math.Max(0, version.Build));
+        var platform = architecture == System.Runtime.InteropServices.Architecture.Arm64 ? "ARM64" : "Win64; x64";
+        return $"Lagerfeuer/{numbers.ToString(3)} (Windows NT 10.0; {platform})";
     }
 
     public bool IsConfigured => ServerUri is not null && AccessToken is not null;
