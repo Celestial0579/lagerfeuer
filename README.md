@@ -37,6 +37,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - per **SSO** (OpenID Connect, z.B. Authentik) im **Standardbrowser**. Eine bestehende Sitzung beim Identity Provider wird mitgenutzt.
   - JWT-Access-Token plus rotierendes Refresh-Token, die bei Ablauf automatisch erneuert werden. Die Tokens liegen DPAPI-verschlüsselt im Benutzerprofil.
   - Angemeldete Geräte einsehen und einzeln abmelden, „Auf allen Geräten abmelden“.
+  - Scheitert die Verbindung, nennt die Meldung den Grund in einem deutschen Satz, etwa wenn der Server kein HTTPS spricht oder das Zertifikat nicht vertrauenswürdig ist.
 - **Bibliothek**
   - „Weiterhören“ über alle Bibliotheken hinweg, inklusive angefangener Podcast-Folgen.
   - Bücher, **Serien** und **Autoren** mit eigenen Seiten. Serien erscheinen in Lesereihenfolge, Autoren mit Bild, Beschreibung und Serien.
@@ -126,6 +127,7 @@ Die UI-unabhängige Logik liegt in `src/Lagerfeuer.Core` und ist mit xUnit v3 ge
 - **Streaming-Cache:** Range-Requests, Springen, Fortsetzen teilweise geladener Dateien, Lesen ohne Server, Server ohne Range-Support.
 - **Updater:** Versionsvergleich, Auswahl der passenden Datei, Entwürfe und Vorabversionen, Prüfsummen (auch fehlende), Erkennung der portablen EXE, ihr Tausch mit Rückweg, Meldungen bei einem Fehlschlag, Aufräumen alter Entpackordner.
 - **Cache-Verwaltung, Datenmodelle und Formatierung.**
+- **Meldungen bei Verbindungsfehlern:** kein HTTPS, Zertifikat, unbekannter Name, abgelehnte Verbindung, Zeitüberschreitung, kein Audiobookshelf-Server.
 
 ```bash
 dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj
