@@ -37,6 +37,8 @@ public sealed partial class PlayerService : ObservableObject
     private int _trackIndex = -1;
     private CachingHttpStream? _stream;
     private (int Index, CachingHttpStream Stream)? _prefetch;
+    private bool _prefetching;
+    private bool _prefetchTriedForPosition;
     private double? _pendingSeek;
     private bool _playWhenOpened;
     private bool _syncInFlight;
@@ -183,9 +185,17 @@ public sealed partial class PlayerService : ObservableObject
         catch (Exception ex)
         {
             Log.Error($"Wiedergabe von {itemId} fehlgeschlagen", ex);
-            ErrorMessage = ex is AbsApiException { Status: System.Net.HttpStatusCode.NotFound }
-                ? "Dieses Buch kann nicht abgespielt werden – der Server hat keine Audiodateien dafür (z. B. nur E-Book)."
-                : ex.Message;
+            ErrorMessage = ex switch
+            {
+                // Antwort des Servers selbst: Das Buch gibt es dort nicht oder es hat keine Audiodateien.
+                AbsApiException { Status: System.Net.HttpStatusCode.NotFound, ServerUnreachable: false }
+                    => "Dieses Buch kann nicht abgespielt werden – der Server hat keine Audiodateien dafür (z. B. nur E-Book).",
+                // Ein Proxy davor meldet, dass der Server fehlt. Ein heruntergeladenes Buch hätte hier schon gespielt.
+                AbsApiException { ServerUnreachable: true, Status: { } status }
+                    => $"Der Audiobookshelf-Server ist gerade nicht erreichbar (ein Proxy davor antwortet mit {(int)status}). " +
+                       "Heruntergeladene Bücher kannst du weiter hören.",
+                _ => ex.Message,
+            };
             await StopAsync();
         }
         finally
@@ -196,7 +206,8 @@ public sealed partial class PlayerService : ObservableObject
 
     /// <summary>
     /// Startet eine Session am Server – oder, wenn dieser nicht erreichbar ist und das Buch vollständig
-    /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird.
+    /// lokal vorliegt, eine Offline-Session, die später hochgeladen wird. Nicht erreichbar heißt: keine
+    /// Verbindung, oder ein Proxy davor meldet, dass der Server fehlt (<see cref="AbsApiException.ServerUnreachable"/>).
     /// </summary>
     private async Task<PlaybackSession> StartSessionAsync(string itemId, string? episodeId)
     {
@@ -208,7 +219,7 @@ public sealed partial class PlayerService : ObservableObject
             {
                 return await _api.StartPlaybackAsync(itemId, _settings.DeviceId, episodeId);
             }
-            catch (AbsApiException ex) when (ex.Status is null && episodeId is null && CanPlayOffline(itemId))
+            catch (AbsApiException ex) when (ex.ServerUnreachable && episodeId is null && CanPlayOffline(itemId))
             {
                 Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {itemId} offline.");
             }
@@ -293,6 +304,8 @@ public sealed partial class PlayerService : ObservableObject
         var index = FindTrackIndex(bookTime);
         Position = bookTime;
         UpdateChapter(bookTime);
+        // Nach einem Sprung neu prüfen, ob der Rest der Datei schon da ist (siehe OnTick).
+        _prefetchTriedForPosition = false;
 
         if (index == _trackIndex && _pendingSeek is null)
         {
@@ -391,8 +404,16 @@ public sealed partial class PlayerService : ObservableObject
         OnPropertyChanged(nameof(Chapters));
     }
 
-    /// <summary>Beim Beenden der App: Session sauber schließen (mit Zeitlimit).</summary>
-    public async Task ShutdownAsync()
+    private RunOnce? _shutdown;
+
+    /// <summary>
+    /// Beim Beenden der App: Session sauber schließen (mit Zeitlimit). Läuft je Instanz nur einmal, gleich
+    /// wie oft und von wo es angestoßen wird (Fenster schließen, Update); weitere Aufrufe warten auf denselben
+    /// Vorgang.
+    /// </summary>
+    public Task ShutdownAsync() => (_shutdown ??= new RunOnce(ShutdownCoreAsync)).RunAsync();
+
+    private async Task ShutdownCoreAsync()
     {
         _settings.Save();
         await Task.WhenAny(StopAsync(), Task.Delay(TimeSpan.FromSeconds(4)));
@@ -426,6 +447,7 @@ public sealed partial class PlayerService : ObservableObject
         _pendingSeek = bookTime;
         _playWhenOpened = play;
         IsBuffering = true;
+        _prefetchTriedForPosition = false;
 
         try
         {
@@ -482,20 +504,28 @@ public sealed partial class PlayerService : ObservableObject
         return item;
     }
 
-    /// <summary>Lädt den nächsten Track im Hintergrund vor, sobald der aktuelle vollständig im Cache ist.</summary>
+    /// <summary>
+    /// Lädt den nächsten Track im Hintergrund vor, sobald der aktuelle den Server nicht mehr braucht: wenn er
+    /// von der Lesestelle bis zum Dateiende im Cache ist. Vollständig muss er dafür nicht sein. Nach einem
+    /// Sprung fehlt der Teil davor; würde darauf gewartet, käme das Vorladen zu spät oder gar nicht, und am
+    /// Dateiende stockte die Wiedergabe, bis der Anfang der nächsten Datei geladen ist.
+    /// </summary>
     private async Task PrefetchNextTrackAsync(int currentIndex, int generation)
     {
+        if (_prefetching) return;
+        var started = false;
         try
         {
             var session = _session;
             if (session is null || generation != _loadGeneration) return;
-            if (_stream is { IsComplete: false }) return;
+            if (_stream is { } current && !current.IsCompleteFrom(current.Position)) return;
 
             var nextIndex = currentIndex + 1;
             if (nextIndex >= session.AudioTracks.Count || _prefetch?.Index == nextIndex) return;
             var next = session.AudioTracks[nextIndex];
             if (_cache.IsTrackComplete(session.LibraryItemId, next)) return;
 
+            _prefetching = started = true;
             var stream = await _cache.OpenTrackAsync(session.LibraryItemId, next);
             if (generation != _loadGeneration || _session != session)
             {
@@ -508,6 +538,10 @@ public sealed partial class PlayerService : ObservableObject
         catch (Exception ex)
         {
             Log.Error("Vorladen des nächsten Tracks fehlgeschlagen", ex);
+        }
+        finally
+        {
+            if (started) _prefetching = false;
         }
     }
 
@@ -608,6 +642,17 @@ public sealed partial class PlayerService : ObservableObject
         UpdateChapter(t);
         CachedFraction = _stream?.CachedFraction ?? (_trackIndex >= 0 ? 1 : 0);
 
+        // Vorladen des nächsten Tracks anstoßen, sobald der Rest des laufenden da ist. Einmal je Stelle:
+        // Nach einem Sprung oder Trackwechsel wird neu geprüft. Erst nach dem Öffnen (_pendingSeek ist dann
+        // leer): Beim Öffnen liest Windows kurz am Dateiende. Die Lesestelle steht in dem Moment dort, und ab
+        // dort ist alles geladen, obwohl fast die ganze Datei noch fehlt.
+        if (!_prefetchTriedForPosition && _pendingSeek is null
+            && _stream is { IsComplete: false } stream && stream.IsCompleteFrom(stream.Position))
+        {
+            _prefetchTriedForPosition = true;
+            _ = PrefetchNextTrackAsync(_trackIndex, _loadGeneration);
+        }
+
         CheckSleepTimer(t);
 
         // Pause → sofort syncen; sonst periodisch.
@@ -694,7 +739,7 @@ public sealed partial class PlayerService : ObservableObject
             await _api.SyncSessionAsync(session.Id, current, listened, Duration);
             ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
         }
-        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
+        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound && !ex.ServerUnreachable)
         {
             // Session ist am Server nicht mehr offen (Neustart oder > 36 h inaktiv) → neue Session,
             // Wiedergabe läuft lokal ungestört weiter. Tracks/URLs bleiben identisch.

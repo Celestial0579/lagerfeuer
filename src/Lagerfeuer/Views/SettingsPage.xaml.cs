@@ -110,7 +110,7 @@ public sealed partial class SettingsPage : Page
     {
         CacheSizeText.Text = "Belegt: …";
         var bytes = await Task.Run(App.Cache.GetTotalSize);
-        CacheSizeText.Text = $"Belegt: {bytes / 1024d / 1024 / 1024:0.00} GB";
+        CacheSizeText.Text = $"Belegt: {Format.Size(bytes)}";
     }
 
     private void OnCacheLimitChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)

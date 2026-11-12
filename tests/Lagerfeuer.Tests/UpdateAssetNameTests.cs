@@ -15,7 +15,7 @@ public class UpdateAssetNameTests : IDisposable
 
     private readonly TempDir _dir = new();
 
-    private static readonly byte[] Bytes = "neues Setup"u8.ToArray();
+    private static readonly byte[] Bytes = TestProgram.Bytes(TestProgram.X86, "neues Setup");
     private static readonly string Sha256 = Convert.ToHexString(SHA256.HashData(Bytes)).ToLowerInvariant();
 
     private static string ReleaseJson(params string[] assetNames)
