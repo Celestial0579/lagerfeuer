@@ -16,7 +16,7 @@
     # Signieren mit PFX-Datei (Kennwort aus Umgebungsvariable LAGERFEUER_SIGN_PASSWORD). Öffentliche
     # Aussteller geben seit dem 1.6.2023 keine PFX-Dateien mehr aus; das taugt nur noch für selbst
     # ausgestellte Zertifikate, etwa zum Ausprobieren:
-    ./build/publish.ps1 -Installer -CertificatePath C:\certs\lagerfeuer.pfx
+    ./build/publish.ps1 -Installer -CertificatePath $HOME\Zertifikate\lagerfeuer.pfx
 
 .NOTES
     Der Release-Workflow (.github/workflows/release.yml) kennt bisher nur den Weg über eine PFX-Datei

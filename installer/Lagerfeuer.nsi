@@ -6,7 +6,8 @@
 ; Aufruf über build/publish.ps1 -Installer, oder manuell:
 ;   makensis /INPUTCHARSET UTF8 /DVERSION=0.1.0 /DARCH=x64 /DSRCDIR=<publish-ordner> /DOUTFILE=<setup.exe> /DICON=<ico> Lagerfeuer.nsi
 ;
-; Unbeaufsichtigt:  Lagerfeuer-…-setup.exe /S [/D=C:\Pfad]
+; Unbeaufsichtigt:  Lagerfeuer-…-setup.exe /S [/D=%LOCALAPPDATA%\Programs\Lagerfeuer]
+;                   Ein Ordner außerhalb des Benutzerprofils bekommt eingeschränkte Rechte (siehe SecureInstDir).
 ; Vom Updater:      Lagerfeuer-…-setup.exe /S /RESTART   (wartet auf das Beenden der App und startet sie danach neu)
 ; Deinstallation:   uninstall.exe /S
 
@@ -36,7 +37,11 @@ RequestExecutionLevel user
 !define PUBLISHER   "Celestial0579"
 !define EXENAME     "Lagerfeuer.exe"
 !define UNINSTKEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
-!define SETTINGSKEY "Software\${APPNAME}"
+; Eigene Einstellungen unter Software\<Hersteller>\<Produkt> (#48). Bis 0.2.4 lag der Schlüssel direkt unter
+; Software\Lagerfeuer; das Setup zieht ihn beim Update um.
+!define PUBLISHERKEY "Software\${PUBLISHER}"
+!define SETTINGSKEY "${PUBLISHERKEY}\${APPNAME}"
+!define OLDSETTINGSKEY "Software\${APPNAME}"
 !define PROTOCOLKEY "Software\Classes\lagerfeuer"
 !define FALLBACKPROTOCOLKEY "Software\Classes\audiobookshelf"
 !define HOMEPAGE    "https://github.com/Celestial0579/lagerfeuer"
@@ -68,6 +73,7 @@ VIAddVersionKey /LANG=1031 "LegalCopyright" "GPL-3.0"
 !include x64.nsh
 !include FileFunc.nsh
 !include WinVer.nsh
+!include WordFunc.nsh
 
 Var Restart
 
@@ -104,6 +110,7 @@ Var Restart
 !define MUI_LICENSEPAGE_CHECKBOX_TEXT "Ich stimme den Lizenzbedingungen der mitgelieferten Komponenten zu."
 !insertmacro MUI_PAGE_LICENSE "license-de.txt"
 !insertmacro MUI_PAGE_COMPONENTS
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -177,6 +184,18 @@ Function .onInit
     ${EndIf}
   !endif
 
+  ; Update von 0.2.4 oder älter: Der neue Schlüssel fehlt noch, der Ordner steht im alten. Ohne diesen Schritt
+  ; installierte das Update (der Updater ruft das Setup ohne /D auf) in den Vorgabeordner statt über die alte Fassung.
+  ; Hat der Aufruf mit /D einen anderen Ordner gewählt, bleibt es dabei.
+  ReadRegStr $R0 HKCU "${SETTINGSKEY}" "InstallDir"
+  ${If} $R0 == ""
+  ${AndIf} $INSTDIR == "$LOCALAPPDATA\Programs\${APPNAME}"
+    ReadRegStr $R0 HKCU "${OLDSETTINGSKEY}" "InstallDir"
+    ${If} $R0 != ""
+      StrCpy $INSTDIR $R0
+    ${EndIf}
+  ${EndIf}
+
   StrCpy $Restart 0
   ${GetParameters} $R0
   ClearErrors
@@ -196,12 +215,94 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+; ---------- Rechte des Installationsordners (#46) ----------
+; Unter dem Benutzerprofil (Vorgabe: %LOCALAPPDATA%\Programs\Lagerfeuer) kann nur der Benutzer selbst schreiben.
+; Ein frei gewählter Ordner wie C:\Lagerfeuer erbt dagegen die Rechte seines Elternordners; im Laufwerksstamm dürfen
+; oft alle angemeldeten Benutzer Dateien anlegen. Ein anderer Benutzer könnte dann Lagerfeuer.exe oder eine DLL
+; austauschen, und Lagerfeuer liefe beim nächsten Start mit den Rechten des Opfers.
+
+; $R0 = 1, wenn $INSTDIR nicht im Benutzerprofil liegt, sonst 0
+Function IsOutsideProfile
+  Push $R1
+  Push $R2
+  StrLen $R1 "$PROFILE"
+  StrCpy $R2 "$INSTDIR" $R1
+  StrCpy $R0 1
+  ${If} $R2 == "$PROFILE"           ; der Vergleich von LogicLib achtet nicht auf Groß- und Kleinschreibung
+    StrCpy $R2 "$INSTDIR" 1 $R1
+    ${If} $R2 == "\"
+    ${OrIf} $R2 == ""
+      StrCpy $R0 0
+    ${EndIf}
+  ${EndIf}
+  Pop $R2
+  Pop $R1
+FunctionEnd
+
+Function DirectoryLeave
+  Push $R0
+  Call IsOutsideProfile
+  ${If} $R0 == 1
+    MessageBox MB_YESNO|MB_ICONEXCLAMATION "Der Ordner liegt außerhalb deines Benutzerprofils.$\r$\n$\r$\nEmpfohlen ist der vorgeschlagene Ordner unter %LOCALAPPDATA%\Programs. Das Setup beschränkt die Rechte des gewählten Ordners auf dich, damit kein anderer Benutzer die Programmdateien austauschen kann. Gehört der Ordner einem anderen Benutzer oder liegen dort schon fremde Dateien, hilft das nicht.$\r$\n$\r$\nTrotzdem dorthin installieren?" IDYES ok
+    Pop $R0
+    Abort
+  ok:
+  ${EndIf}
+  Pop $R0
+FunctionEnd
+
+; Außerhalb des Profils: Vererbung aus, Vollzugriff nur für den Benutzer, SYSTEM und die Administratoren; was
+; schon im Ordner liegt, übernimmt diese Rechte. Gelingt das nicht, wird nicht installiert.
+Function SecureInstDir
+  Push $R0
+  Push $R1
+  Push $R2
+  Call IsOutsideProfile
+  ${If} $R0 == 1
+    CreateDirectory "$INSTDIR"
+    ; Den Benutzer über seine SID nennen, nicht als %USERDOMAIN%\%USERNAME%: Die Umgebungsvariablen stimmen nicht
+    ; in jeder Sitzung (über SSH steht dort etwa WORKGROUP), und dann fände icacls das Konto nicht.
+    ; whoami /user /fo csv /nh liefert "rechner\name","S-1-5-21-…".
+    nsExec::ExecToStack '"$SYSDIR\whoami.exe" /user /fo csv /nh'
+    Pop $R0
+    Pop $R1
+    StrCpy $R2 ""
+    ${If} $R0 == 0
+      ${WordFind} '$R1' '","' "+2" $R2
+      ${WordFind} '$R2' '"' "+1" $R2
+    ${EndIf}
+    StrCpy $R1 $R2 4
+    ${If} $R1 == "S-1-"
+      nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR" /inheritance:r /grant:r "*$R2:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"'
+      Pop $R0                       ; Exitcode
+      Pop $R1                       ; Ausgabe
+    ${Else}
+      StrCpy $R0 1                  ; SID unbekannt: nicht installieren
+    ${EndIf}
+    ${If} $R0 != 0
+      MessageBox MB_OK|MB_ICONSTOP "Die Rechte des Installationsordners ließen sich nicht auf dich beschränken:$\r$\n$INSTDIR$\r$\n$\r$\nBitte wähle einen Ordner in deinem Benutzerprofil." /SD IDOK
+      Pop $R2
+      Pop $R1
+      Pop $R0
+      Abort
+    ${EndIf}
+    ; Was schon darin liegt, erbt ab jetzt nur noch diese Rechte (fremde ausdrückliche Rechte fallen weg).
+    nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR\*" /reset /T /C /Q'
+    Pop $R0
+    Pop $R1
+  ${EndIf}
+  Pop $R2
+  Pop $R1
+  Pop $R0
+FunctionEnd
+
 ; ---------- Installation ----------
 
 Section "Lagerfeuer (erforderlich)" SecMain
   SectionIn RO
   SetShellVarContext current
   Call CloseRunningApp
+  Call SecureInstDir
 
   SetOutPath "$INSTDIR"
   File /r "${SRCDIR}\*.*"
@@ -225,6 +326,7 @@ Section "Lagerfeuer (erforderlich)" SecMain
   WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" "$0"
 
   WriteRegStr HKCU "${SETTINGSKEY}" "InstallDir" "$INSTDIR"
+  DeleteRegKey HKCU "${OLDSETTINGSKEY}"
 SectionEnd
 
 Section "Desktop-Verknüpfung" SecDesktop
@@ -259,6 +361,8 @@ Section "un.Lagerfeuer" SecUnMain
 
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "${SETTINGSKEY}"
+  DeleteRegKey HKCU "${OLDSETTINGSKEY}"
+  DeleteRegKey /ifempty HKCU "${PUBLISHERKEY}"
 
   ; Protokoll-Handler lagerfeuer:// und audiobookshelf:// (für SSO; legt die App selbst an) – nur wenn sie auf uns zeigen
   ReadRegStr $0 HKCU "${PROTOCOLKEY}\shell\open\command" ""

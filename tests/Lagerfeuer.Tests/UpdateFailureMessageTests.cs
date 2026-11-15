@@ -28,7 +28,7 @@ public sealed class UpdateFailureMessageTests : IDisposable
         => new(new HttpClient(new FakeHandler(respond)), new Version(0, 1, 0), false, "win-x64", _dir.Path);
 
     private static UpdateAsset Asset(string name = "Lagerfeuer-0.2.0-win-x64-setup.exe")
-        => new(name, "https://example.test/" + name, Bytes.Length, Digest);
+        => new(name, "https://github.com/Celestial0579/lagerfeuer/releases/download/v1.0.0/" + name, Bytes.Length, Digest);
 
     private static IOException WindowsIo(int code) => new("The process cannot access the file 'C:\\Users\\jemand\\x.exe'.", unchecked((int)0x80070000) | code);
 
