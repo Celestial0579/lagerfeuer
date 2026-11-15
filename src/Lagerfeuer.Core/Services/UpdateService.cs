@@ -34,6 +34,17 @@ public sealed class UpdateService
     // Reihenfolge wichtig: CreateClient() verwendet CurrentVersion.
     public static Version CurrentVersion { get; } = Normalize(AppAssembly.GetName().Version ?? new Version(0, 0, 0));
 
+    /// <summary>
+    /// Ist die laufende Fassung eine Vorabversion (Tag vX.Y.Z-beta.N)? Ihre Assembly-Version ist X.Y.Z wie die der
+    /// fertigen Fassung; erst die Produktversion („0.2.5-beta.1+…“) verrät die Vorabversion.
+    /// </summary>
+    public static bool CurrentIsPrerelease { get; } =
+        IsPrereleaseVersion(AppAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+
+    /// <summary>Hat die Produktversion einen Vorab-Teil („-beta.1“) vor einer etwaigen Build-Angabe („+sha“)?</summary>
+    internal static bool IsPrereleaseVersion(string? informational)
+        => informational is not null && informational.Split('+')[0].Contains('-');
+
     private static readonly HttpClient SharedHttp = CreateClient();
 
     /// <summary>Single-File-EXE (portabel) statt Installation?</summary>
@@ -72,17 +83,20 @@ public sealed class UpdateService
 
     private readonly HttpClient _http;
     private readonly Version _current;
+    private readonly bool _currentIsPrerelease;
     private readonly bool _portable;
     private readonly string _rid;
     private readonly string? _downloadDirectory;
 
-    public UpdateService() : this(SharedHttp, CurrentVersion, IsPortable, CurrentRid) { }
+    public UpdateService() : this(SharedHttp, CurrentVersion, IsPortable, CurrentRid, currentIsPrerelease: CurrentIsPrerelease) { }
 
     /// <summary>Für Tests: HTTP, laufende Version, Variante und Architektur vorgeben.</summary>
-    internal UpdateService(HttpClient http, Version current, bool portable, string rid, string? downloadDirectory = null)
+    internal UpdateService(HttpClient http, Version current, bool portable, string rid, string? downloadDirectory = null,
+        bool currentIsPrerelease = false)
     {
         _http = http;
         _current = current;
+        _currentIsPrerelease = currentIsPrerelease;
         _portable = portable;
         _rid = rid;
         _downloadDirectory = downloadDirectory;
@@ -112,7 +126,9 @@ public sealed class UpdateService
 
         var release = await resp.Content.ReadFromJsonAsync<GitHubRelease>(ct);
         if (release is null || release.Draft || release.Prerelease) return null;
-        if (!TryParseVersion(release.TagName, out var version) || version <= _current) return null;
+        if (!TryParseVersion(release.TagName, out var version)) return null;
+        // Auf eine Vorabversion folgt die fertige Fassung derselben Nummer (0.2.5-beta.1 → 0.2.5): Sie ist neuer.
+        if (version < _current || (version == _current && !_currentIsPrerelease)) return null;
 
         // Nur eine Datei, die genau so heißt, wie build/publish.ps1 sie für diese Variante und Architektur nennt.
         // Alles andere im Release wird nicht angeboten, auch wenn es auf dieselbe Endung hört.

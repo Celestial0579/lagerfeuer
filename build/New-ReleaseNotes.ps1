@@ -12,7 +12,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$previous = git describe --tags --abbrev=0 --match 'v*' "$Tag^" 2>$null
+# Die fertige Fassung zählt ab der vorigen fertigen Fassung, nicht ab ihrer Beta; eine Beta ab dem letzten Tag.
+$exclude = if ($Tag -like '*-*') { @() } else { @('--exclude', 'v*-*') }
+$previous = git describe --tags --abbrev=0 --match 'v*' @exclude "$Tag^" 2>$null
 $range = if ($previous) { "$previous..$Tag" } else { $Tag }
 
 # Datensätze durch ASCII 30 getrennt, Betreff und Text durch ASCII 31

@@ -1,5 +1,7 @@
 # Baut Lagerfeuer und veröffentlicht ein GitHub-Release, sobald ein Versions-Tag gepusht wird:
 #   git tag v0.2.0 && git push origin v0.2.0
+# Ein Tag vX.Y.Z-beta.N wird als Vorabversion veröffentlicht (ohne winget). Der Updater bietet Vorabversionen
+# nicht an; wer eine Beta installiert hat, bekommt später die fertige Fassung X.Y.Z angeboten.
 # Der eingebaute Updater der App holt sich die Dateien aus diesem Release.
 #
 # Signiert wird derzeit nicht. Die Schritte „Code-Signing vorbereiten“ und „Signaturzertifikat entfernen“
@@ -39,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Tag '${{ github.ref_name }}' ist keine Version (vX.Y.Z)." }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-beta\.\d+)?$') { throw "Tag '${{ github.ref_name }}' ist keine Version (vX.Y.Z oder vX.Y.Z-beta.N)." }
           $proj = 'src/Lagerfeuer/Lagerfeuer.csproj'
           (Get-Content $proj -Raw) -replace '<Version>[^<]*</Version>', "<Version>$version</Version>" | Set-Content $proj -NoNewline
 
@@ -92,9 +94,10 @@ jobs:
           $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           ./build/New-ReleaseNotes.ps1 -Tag '${{ github.ref_name }}' | Set-Content $notes -Encoding utf8
           gh release create '${{ github.ref_name }}' (Get-ChildItem artifacts -File -Filter 'Lagerfeuer-*.exe').FullName (Resolve-Path artifacts/SHA256SUMS).Path `
-            --title 'Lagerfeuer ${{ github.ref_name }}' --notes-file $notes
+            --title 'Lagerfeuer ${{ github.ref_name }}' --notes-file $notes @(if ('${{ github.ref_name }}' -like '*-*') { '--prerelease' })
 
       - name: winget-Manifeste erzeugen
+        if: ${{ !contains(github.ref_name, '-') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,7 +105,8 @@ jobs:
           $version = '${{ github.ref_name }}'.TrimStart('v')
           ./build/New-WingetManifest.ps1 -Version $version
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: ${{ !contains(github.ref_name, '-') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: winget-manifests
           path: artifacts/winget/
