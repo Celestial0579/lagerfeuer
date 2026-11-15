@@ -9,6 +9,7 @@ namespace Lagerfeuer.Tests;
 /// Adressen aus Antworten eines Servers gibt Lagerfeuer nur dann an Windows zum Öffnen weiter, wenn es
 /// Web-Adressen sind. Über die Shell öffnet Windows sonst auch Programme („file:“) und andere Anwendungen.
 /// </summary>
+[Collection(OpenIdLoginTests.Sammlung)]
 public class WebLinksTests
 {
     // Was ein Server statt einer Anmeldeseite nennen könnte.

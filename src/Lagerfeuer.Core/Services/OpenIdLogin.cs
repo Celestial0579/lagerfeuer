@@ -17,19 +17,22 @@ namespace Lagerfeuer.Services;
 ///    die Cookies "connect.sid" + "auth_method=openid-mobile".
 /// 2. Die Authorize-URL wird im Standardbrowser geöffnet – so wird eine bestehende IdP-Sitzung
 ///    (z.B. Authentik) wiederverwendet. Nach dem Login leitet der IdP auf {server}/auth/openid/mobile-redirect,
-///    ABS leitet weiter auf  audiobookshelf://oauth?code&amp;state.
+///    ABS leitet weiter auf  lagerfeuer://oauth?code&amp;state  (Rückfall: audiobookshelf://oauth).
 /// 3. Windows startet dafür Lagerfeuer (Protokoll-Handler, siehe <see cref="ProtocolRegistration"/>); die neue
 ///    Instanz reicht die URL an die laufende weiter (<see cref="SingleInstance"/>) → <see cref="OnCallback"/>.
 ///    state wird geprüft.
 /// 4. Code-Tausch: GET {server}/auth/openid/callback?state&amp;code&amp;code_verifier – MIT den Cookies aus Schritt 1.
 ///    Antwort ist das Login-Payload inkl. accessToken + refreshToken.
 ///
-/// Server-Voraussetzungen: "audiobookshelf://oauth" in den erlaubten Mobile-Redirect-URIs (ABS-Standard);
+/// Server-Voraussetzungen: "lagerfeuer://oauth" in den erlaubten Mobile-Redirect-URIs. Fehlt die Adresse dort
+/// (ABS antwortet in Schritt 1 mit 400 „Invalid redirect_uri“), versucht Lagerfeuer "audiobookshelf://oauth",
+/// den ABS-Standard der offiziellen Apps;
 /// im IdP muss  https://&lt;abs&gt;/auth/openid/mobile-redirect  als Redirect-URI eingetragen sein.
 /// </summary>
 public static class OpenIdLogin
 {
-    public const string RedirectUri = "audiobookshelf://oauth";
+    public const string RedirectUri = ProtocolRegistration.Scheme + "://oauth";
+    public const string FallbackRedirectUri = ProtocolRegistration.FallbackScheme + "://oauth";
 
     public static Task<LoginResponse?> LoginAsync(AbsApiClient api, Uri server, CancellationToken ct = default)
         // Eigener HttpClient: Cookie-Jar für die ABS-Session, Redirects nicht automatisch folgen.
@@ -42,41 +45,62 @@ public static class OpenIdLogin
 
     /// <param name="handler">Zugang zum Server; für Tests von außen vorgegeben. Wird am Ende freigegeben.</param>
     /// <param name="openBrowser">Öffnet die Anmeldeseite; für Tests von außen vorgegeben.</param>
+    /// <param name="register">Trägt Lagerfeuer für ein Protokoll ein (false: gehört einem anderen Programm);
+    /// für Tests von außen vorgegeben.</param>
     internal static async Task<LoginResponse?> LoginAsync(AbsApiClient api, Uri server, HttpMessageHandler handler,
-        Action<Uri> openBrowser, CancellationToken ct = default)
+        Action<Uri> openBrowser, CancellationToken ct = default, Func<string, bool>? register = null)
     {
+        register ??= ProtocolRegistration.EnsureRegistered;
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(32));
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
         var state = Base64Url(RandomNumberGenerator.GetBytes(16));
 
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
-        // Schritt 1
-        var startUrl = api.Resolve(
-            "auth/openid" +
-            $"?code_challenge={challenge}" +
-            "&code_challenge_method=S256" +
-            $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}" +
-            "&response_type=code" +
-            $"&state={state}",
-            server);
-
-        Uri authorizeUrl;
-        using (var resp = await http.GetAsync(startUrl, ct))
+        // Schritt 1: erst die eigene Adresse, dann die der offiziellen Apps
+        Uri? authorizeUrl = null;
+        string? scheme = null;
+        foreach (var (redirectUri, candidate) in new[]
+                 {
+                     (RedirectUri, ProtocolRegistration.Scheme),
+                     (FallbackRedirectUri, ProtocolRegistration.FallbackScheme),
+                 })
         {
-            if ((int)resp.StatusCode is < 300 or >= 400 || resp.Headers.Location is null)
+            var startUrl = api.Resolve(
+                "auth/openid" +
+                $"?code_challenge={challenge}" +
+                "&code_challenge_method=S256" +
+                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+                "&response_type=code" +
+                $"&state={state}",
+                server);
+
+            using var resp = await http.GetAsync(startUrl, ct);
+            if ((int)resp.StatusCode is >= 300 and < 400 && resp.Headers.Location is not null)
             {
-                var body = await SafeReadAsync(resp);
-                throw new AbsApiException(resp.StatusCode == HttpStatusCode.BadRequest && body.Contains("redirect_uri")
-                    ? $"Der Server erlaubt die Redirect-URI „{RedirectUri}“ nicht. Bitte in Audiobookshelf unter " +
-                      "Einstellungen → Authentifizierung bei den erlaubten Mobile-Redirect-URIs eintragen."
-                    : $"SSO konnte nicht gestartet werden ({(int)resp.StatusCode}): {body}", resp.StatusCode);
+                authorizeUrl = ResolveAuthorizeUrl(startUrl, resp.Headers.Location);
+                scheme = candidate;
+                break;
             }
-            authorizeUrl = ResolveAuthorizeUrl(startUrl, resp.Headers.Location);
+
+            var body = await SafeReadAsync(resp);
+            if (resp.StatusCode != HttpStatusCode.BadRequest || !body.Contains("redirect_uri"))
+                throw new AbsApiException($"SSO konnte nicht gestartet werden ({(int)resp.StatusCode}): {body}", resp.StatusCode);
+            Log.Info($"Server erlaubt die Redirect-URI {redirectUri} nicht.");
         }
 
+        if (authorizeUrl is null || scheme is null)
+            throw new AbsApiException(
+                $"Der Server erlaubt weder die Redirect-URI „{RedirectUri}“ noch „{FallbackRedirectUri}“. Bitte in " +
+                $"Audiobookshelf unter Einstellungen → Authentifizierung bei den erlaubten Mobile-Redirect-URIs „{RedirectUri}“ eintragen.",
+                HttpStatusCode.BadRequest);
+
         // Schritte 2 + 3
-        ProtocolRegistration.EnsureRegistered();
+        if (!register(scheme))
+            throw new AbsApiException(
+                $"Der Server erlaubt nur „{FallbackRedirectUri}“, und diese Adresse gehört unter Windows einem anderen " +
+                $"Programm. Bitte in Audiobookshelf unter Einstellungen → Authentifizierung bei den erlaubten " +
+                $"Mobile-Redirect-URIs „{RedirectUri}“ eintragen.");
         var pending = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending = pending;
         _lastAuthorizeUrl = authorizeUrl;
@@ -137,7 +161,8 @@ public static class OpenIdLogin
     /// <summary>Wartet gerade eine SSO-Anmeldung auf den Browser?</summary>
     public static bool IsWaiting => _pending is not null;
 
-    /// <summary>Wird aufgerufen, wenn Windows Lagerfeuer mit audiobookshelf://oauth?… aktiviert.</summary>
+    /// <summary>Wird aufgerufen, wenn Windows Lagerfeuer mit lagerfeuer://oauth?… (oder audiobookshelf://oauth?…)
+    /// aktiviert. Welcher Anmeldung der Rückruf gehört, entscheidet danach der state.</summary>
     public static bool OnCallback(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !ProtocolRegistration.IsCallback(url)) return false;

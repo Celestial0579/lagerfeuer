@@ -58,7 +58,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        // Start durch den Browser (audiobookshelf://oauth?…) oder zweiter Start → an laufende Instanz übergeben.
+        // Start durch den Browser (lagerfeuer://oauth?… oder audiobookshelf://oauth?…) oder zweiter Start → an laufende Instanz übergeben.
         var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToList();
         var callbackUrl = cmdArgs.FirstOrDefault(ProtocolRegistration.IsCallback);
 
