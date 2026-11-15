@@ -58,6 +58,9 @@ public sealed partial class IncrementalBookCollection(string libraryId, AbsApiCl
 
     public event EventHandler<Exception>? LoadFailed;
 
+    /// <summary>Eine Seite kam an – z. B. um eine frühere Fehlermeldung zu schließen.</summary>
+    public event EventHandler? LoadSucceeded;
+
     public bool HasMoreItems => !HasError && (_total < 0 || Count < _total);
 
     public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
@@ -74,6 +77,7 @@ public sealed partial class IncrementalBookCollection(string libraryId, AbsApiCl
             _page++;
             foreach (var item in resp.Results) Add(new BookItemViewModel(item));
             if (resp.Results.Count == 0) _total = Count;
+            LoadSucceeded?.Invoke(this, EventArgs.Empty);
             return new LoadMoreItemsResult { Count = (uint)resp.Results.Count };
         }
         catch (Exception ex)

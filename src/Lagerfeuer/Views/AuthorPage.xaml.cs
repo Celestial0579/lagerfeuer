@@ -45,10 +45,11 @@ public sealed partial class AuthorPage : Page
 
             BooksGrid.ItemsSource = author.LibraryItems.Select(b => new BookItemViewModel(b)).ToList();
             ContentRoot.Visibility = Visibility.Visible;
+            App.MainWindow.ClearError(MessageOrigins.AuthorPage);
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Autor konnte nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Autor konnte nicht geladen werden: {ex.Message}", MessageOrigins.AuthorPage);
         }
         finally
         {

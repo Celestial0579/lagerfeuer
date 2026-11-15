@@ -27,10 +27,11 @@ public sealed partial class SeriesPage : Page
             }).ToList();
             var total = books.Sum(b => b.Media.Duration);
             InfoText.Text = $"{books.Count} {(books.Count == 1 ? "Buch" : "Bücher")} · {Format.Duration(total)}";
+            App.MainWindow.ClearError(MessageOrigins.SeriesPage);
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Serie konnte nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Serie konnte nicht geladen werden: {ex.Message}", MessageOrigins.SeriesPage);
         }
         finally
         {

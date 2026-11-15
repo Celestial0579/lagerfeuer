@@ -490,6 +490,7 @@ public sealed partial class MainWindow : Window
             ErrorBar.ActionButton = button;
         }
         ErrorBar.IsOpen = true;
+        _messageOrigin.Shown(message, null);
         var timer = DispatcherQueue.CreateTimer();
         // Mit Knopf bleibt mehr Zeit, ihn zu erreichen.
         timer.Interval = TimeSpan.FromSeconds(action is null ? 6 : 10);
@@ -498,12 +499,25 @@ public sealed partial class MainWindow : Window
         timer.Start();
     }
 
-    public void ShowError(string message)
+    private readonly MessageOrigin _messageOrigin = new();
+
+    /// <summary>
+    /// Zeigt eine Fehlermeldung. Mit <paramref name="origin"/> schließt <see cref="ClearError"/> sie wieder,
+    /// sobald das Laden dieser Herkunft gelingt (#40); ohne bleibt sie, bis der Nutzer sie schließt.
+    /// </summary>
+    public void ShowError(string message, string? origin = null)
     {
         ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
         ErrorBar.ActionButton = null;
         ErrorBar.IsOpen = true;
+        _messageOrigin.Shown(message, origin);
+    }
+
+    /// <summary>Das Laden von <paramref name="origin"/> ist gelungen: deren Fehlermeldung schließen, andere stehen lassen.</summary>
+    public void ClearError(string origin)
+    {
+        if (_messageOrigin.Resolve(origin, ErrorBar.IsOpen, ErrorBar.Message)) ErrorBar.IsOpen = false;
     }
 
     private string? _playerErrorShown;

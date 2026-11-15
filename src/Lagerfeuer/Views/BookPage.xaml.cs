@@ -61,10 +61,11 @@ public sealed partial class BookPage : Page
             UpdateProgress();
             UpdateDownloadState();
             ContentRoot.Visibility = Visibility.Visible;
+            App.MainWindow.ClearError(MessageOrigins.Book);
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Buch konnte nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Buch konnte nicht geladen werden: {ex.Message}", MessageOrigins.Book);
         }
         finally
         {
