@@ -105,6 +105,13 @@ if ($Installer) {
             Where-Object { Test-Path $_ } | Select-Object -First 1
     }
     if (-not $makensis) { throw 'NSIS (makensis.exe) nicht gefunden. Installation: winget install NSIS.NSIS' }
+    # Erst ab NSIS 3.04 lädt das Setup Systembibliotheken nur aus System32. Ältere Setups zögen eine fremde DLL
+    # nach, die neben ihnen im Download-Ordner liegt.
+    $nsisVersion = (& $makensis /VERSION | Out-String).Trim().TrimStart('v')
+    if (-not ($nsisVersion -match '^(\d+)\.(\d+)') -or [version]"$($Matches[1]).$($Matches[2])" -lt [version]'3.4') {
+        throw "NSIS $nsisVersion ist zu alt, nötig ist mindestens 3.04."
+    }
+    Write-Host "NSIS $nsisVersion"
 }
 
 foreach ($p in $Platform) {
