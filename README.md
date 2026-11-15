@@ -78,17 +78,17 @@ Das Farbschema (Glut, Funke, Stahl) ist an [firestrike.de](https://firestrike.de
    - `https://<abs-host>/auth/openid/callback` (Web-Oberfläche)
    - `https://<abs-host>/auth/openid/mobile-redirect` (**nötig für Lagerfeuer** und die Mobile-Apps)
 2. **Audiobookshelf** → Einstellungen → Authentifizierung → OpenID Connect aktivieren, Issuer-URL, Client-ID und Secret eintragen.
-3. Unter **Allowed Mobile Redirect URIs** muss `audiobookshelf://oauth` stehen. Das ist der Standard.
+3. Unter **Allowed Mobile Redirect URIs** `lagerfeuer://oauth` eintragen. Fehlt die Adresse, nimmt Lagerfeuer `audiobookshelf://oauth`, den Standard der offiziellen Apps. Mit der eigenen Adresse kommen sich Lagerfeuer und andere Apps auf demselben Rechner nicht in die Quere, und du kannst Lagerfeuer getrennt erlauben.
 4. Hinter einem Reverse-Proxy müssen die `X-Forwarded-*`-Header korrekt gesetzt sein, weil Audiobookshelf daraus die Redirect-URL bildet.
 
 So läuft die Anmeldung ab:
 1. Lagerfeuer startet `/auth/openid` selbst, mit eigenem Cookie-Jar und PKCE.
 2. Die Login-Seite des Identity Providers öffnet sich im Standardbrowser. Bist du dort schon angemeldet, geht es ohne Eingabe weiter. Ihre Adresse nennt der Server; Lagerfeuer öffnet sie nur, wenn sie eine Web-Adresse ist (http oder https), und bricht die Anmeldung sonst ab.
-3. Audiobookshelf leitet auf `audiobookshelf://oauth?code=…&state=…` weiter. Der Browser fragt einmalig, ob Lagerfeuer geöffnet werden darf.
+3. Audiobookshelf leitet auf `lagerfeuer://oauth?code=…&state=…` weiter. Der Browser fragt einmalig, ob Lagerfeuer geöffnet werden darf.
 4. Windows startet Lagerfeuer. Diese Instanz reicht die URL an das laufende Fenster weiter und beendet sich sofort.
 5. Lagerfeuer tauscht den Code mit `code_verifier` und demselben Session-Cookie über `/auth/openid/callback` gegen Tokens.
 
-Den Handler für `audiobookshelf://` registriert Lagerfeuer beim ersten SSO-Login selbst (pro Benutzer unter `HKCU\Software\Classes`, ohne Adminrechte).
+Den Handler für `lagerfeuer://` registriert Lagerfeuer beim ersten SSO-Login selbst (pro Benutzer unter `HKCU\Software\Classes`, ohne Adminrechte). `audiobookshelf://` übernimmt es nur für den Rückfall und nur, wenn kein anderes Programm den Eintrag belegt.
 
 ## Updates
 

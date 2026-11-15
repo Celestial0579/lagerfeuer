@@ -37,7 +37,8 @@ RequestExecutionLevel user
 !define EXENAME     "Lagerfeuer.exe"
 !define UNINSTKEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 !define SETTINGSKEY "Software\${APPNAME}"
-!define PROTOCOLKEY "Software\Classes\audiobookshelf"
+!define PROTOCOLKEY "Software\Classes\lagerfeuer"
+!define FALLBACKPROTOCOLKEY "Software\Classes\audiobookshelf"
 !define HOMEPAGE    "https://github.com/Celestial0579/lagerfeuer"
 
 Name "${APPNAME}"
@@ -259,10 +260,14 @@ Section "un.Lagerfeuer" SecUnMain
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "${SETTINGSKEY}"
 
-  ; Protokoll-Handler audiobookshelf:// (für SSO; legt die App selbst an) – nur wenn er auf uns zeigt
+  ; Protokoll-Handler lagerfeuer:// und audiobookshelf:// (für SSO; legt die App selbst an) – nur wenn sie auf uns zeigen
   ReadRegStr $0 HKCU "${PROTOCOLKEY}\shell\open\command" ""
   ${If} $0 == '"$INSTDIR\${EXENAME}" "%1"'
     DeleteRegKey HKCU "${PROTOCOLKEY}"
+  ${EndIf}
+  ReadRegStr $0 HKCU "${FALLBACKPROTOCOLKEY}\shell\open\command" ""
+  ${If} $0 == '"$INSTDIR\${EXENAME}" "%1"'
+    DeleteRegKey HKCU "${FALLBACKPROTOCOLKEY}"
   ${EndIf}
 SectionEnd
 

@@ -6,7 +6,7 @@ namespace Lagerfeuer.Services;
 
 /// <summary>
 /// Sorgt dafür, dass nur eine Lagerfeuer-Instanz läuft. Weitere Starts (z.B. durch den Browser über
-/// audiobookshelf://oauth?… nach der SSO-Anmeldung) reichen ihre Argumente per Named Pipe an die
+/// lagerfeuer://oauth?… nach der SSO-Anmeldung) reichen ihre Argumente per Named Pipe an die
 /// laufende Instanz weiter und beenden sich.
 /// </summary>
 public sealed partial class SingleInstance : IDisposable
@@ -91,30 +91,71 @@ public sealed partial class SingleInstance : IDisposable
     private static partial bool AllowSetForegroundWindow(int processId);
 }
 
-/// <summary>Registriert Lagerfeuer (pro Benutzer, ohne Adminrechte) als Handler für audiobookshelf://.</summary>
+/// <summary>
+/// Registriert Lagerfeuer (pro Benutzer, ohne Adminrechte) als Programm für die Rückrufe der SSO-Anmeldung:
+/// zuerst das eigene Protokoll lagerfeuer://, als Rückfall audiobookshelf://, das auch die offiziellen
+/// Audiobookshelf-Apps nutzen. Diesen Schlüssel übernimmt Lagerfeuer nur, wenn er frei ist oder schon auf
+/// Lagerfeuer zeigt, damit eine andere App ihre Anmeldung behält.
+/// </summary>
 public static class ProtocolRegistration
 {
-    public const string Scheme = "audiobookshelf";
-    private const string KeyPath = @"Software\Classes\" + Scheme;
+    public const string Scheme = "lagerfeuer";
+    public const string FallbackScheme = "audiobookshelf";
 
-    public static void EnsureRegistered()
+    /// <summary>Trägt Lagerfeuer für das Protokoll ein. False: Es gehört einem anderen Programm.</summary>
+    public static bool EnsureRegistered(string scheme)
     {
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Pfad der Anwendung unbekannt.");
         var command = $"\"{exe}\" \"%1\"";
+        var keyPath = @"Software\Classes\" + scheme;
 
-        using (var existing = Registry.CurrentUser.OpenSubKey(KeyPath + @"\shell\open\command"))
+        using (var existing = Registry.CurrentUser.OpenSubKey(keyPath + @"\shell\open\command"))
         {
-            if (existing?.GetValue("") as string == command) return;
+            var current = existing?.GetValue("") as string;
+            if (current == command) return true;
+            if (scheme != Scheme && !IsFree(current))
+            {
+                Log.Info($"Protokoll {scheme}:// gehört einem anderen Programm – nicht übernommen.");
+                return false;
+            }
         }
 
-        using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
-        key.SetValue("", "URL:Lagerfeuer (Audiobookshelf)");
+        using var key = Registry.CurrentUser.CreateSubKey(keyPath);
+        key.SetValue("", scheme == Scheme ? "URL:Lagerfeuer" : "URL:Lagerfeuer (Audiobookshelf)");
         key.SetValue("URL Protocol", "");
         using (var icon = key.CreateSubKey("DefaultIcon")) icon.SetValue("", $"\"{exe}\",0");
         using (var cmd = key.CreateSubKey(@"shell\open\command")) cmd.SetValue("", command);
-        Log.Info($"Protokoll {Scheme}:// registriert für {exe}");
+        Log.Info($"Protokoll {scheme}:// registriert für {exe}");
+        return true;
+    }
+
+    /// <summary>
+    /// Darf Lagerfeuer den Eintrag übernehmen? Ja, wenn keiner da ist oder er ein Programm namens
+    /// Lagerfeuer*.exe startet (eine andere Installation oder eine ältere portable Version).
+    /// </summary>
+    internal static bool IsFree(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return true;
+        var text = command.Trim();
+        string exe;
+        if (text.StartsWith('"'))
+        {
+            var end = text.IndexOf('"', 1);
+            if (end < 0) return false;
+            exe = text[1..end];
+        }
+        else
+        {
+            var space = text.IndexOf(' ');
+            exe = space < 0 ? text : text[..space];
+        }
+        var name = exe.Replace('/', '\\');
+        name = name[(name.LastIndexOf('\\') + 1)..];
+        return name.StartsWith("Lagerfeuer", StringComparison.OrdinalIgnoreCase)
+               && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsCallback(string arg)
-        => arg.StartsWith(Scheme + ":", StringComparison.OrdinalIgnoreCase);
+        => arg.StartsWith(Scheme + ":", StringComparison.OrdinalIgnoreCase)
+           || arg.StartsWith(FallbackScheme + ":", StringComparison.OrdinalIgnoreCase);
 }
