@@ -17,6 +17,8 @@
          SYSTEM und die Administratoren; im Benutzerprofil bleibt es bei den geerbten Rechten (#46).
       6  Die Einstellungen liegen unter Software\Celestial0579\Lagerfeuer; ein Update übernimmt den Ordner aus dem
          alten Schlüssel Software\Lagerfeuer und löscht ihn, die Deinstallation räumt beide weg (#48).
+      7  Die Deinstallation entfernt nur die installierten Dateien; Fremdes im gewählten Ordner bleibt, im Profil und
+         im Laufwerksstamm. Ein Update entfernt, was die neue Fassung nicht mehr mitbringt (#47).
 
     Die Köder sind harmlose Programme. Sie schreiben nur auf, dass sie gestartet wurden.
 
@@ -398,6 +400,40 @@ Check (-not (Test-Path $movedTarget)) 'Die Deinstallation entfernt den Ordner'
 Check (-not (Test-Path $newKey)) 'Der neue Schlüssel ist weg'
 Check (-not (Test-Path $oldKey)) 'Der alte Schlüssel bleibt weg'
 Check (-not (Test-Path $publisherKey) -or @(Get-ChildItem $publisherKey).Count -gt 0 -or @((Get-Item $publisherKey).Property).Count -gt 0) 'Software\Celestial0579 bleibt nur, wenn noch etwas darin liegt'
+
+# ---------------------------------------------------------------- 7 Deinstallation: nur eigene Dateien
+
+Step '7 Deinstallation entfernt nur, was das Setup installiert hat (#47)'
+# Wer einen Ordner wählt, in dem schon etwas liegt, behält es. Gegenprobe zum Update: Eine Datei, die die neue
+# Fassung nicht mehr mitbringt, verschwindet trotzdem (Liste der bisherigen Fassung im Ordner).
+foreach ($foreignTarget in (Join-Path $env:LOCALAPPDATA "Lagerfeuer-Fremd-$PID"), (Join-Path "$env:SystemDrive\" "Lagerfeuer-Fremd-$PID")) {
+    try {
+        New-Item -ItemType Directory -Force (Join-Path $foreignTarget 'fremder-ordner') | Out-Null
+        Set-Content -LiteralPath (Join-Path $foreignTarget 'fremd.txt') -Value 'gehört nicht Lagerfeuer'
+        Set-Content -LiteralPath (Join-Path $foreignTarget 'fremder-ordner\notiz.txt') -Value 'auch nicht'
+        $code = Invoke-Program $setup2 @('/S', "/D=$foreignTarget") $Work
+        Check ($code -eq 0) "Installation nach $foreignTarget, Exitcode 0 (war $code)"
+        Check (Test-Path (Join-Path $foreignTarget 'Lagerfeuer-installed-files.txt')) 'Die Liste der installierten Dateien liegt im Ordner'
+        Check (Test-Path (Join-Path $foreignTarget 'Aaa-neu.txt')) 'Ausgangslage: 0.0.2 bringt Aaa-neu.txt mit'
+
+        $code = Invoke-Program $setup @('/S', "/D=$foreignTarget") $Work
+        Check ($code -eq 0) "Wechsel auf 0.0.1, Exitcode 0 (war $code)"
+        Check (-not (Test-Path (Join-Path $foreignTarget 'Aaa-neu.txt'))) 'Was 0.0.1 nicht mehr mitbringt, ist weg'
+        Check (Test-Path (Join-Path $foreignTarget 'fremd.txt')) 'Die fremde Datei überlebt das Update'
+
+        $null = Invoke-Program (Join-Path $foreignTarget 'uninstall.exe') @('/S') $Work
+        Wait-Gone (Join-Path $foreignTarget 'uninstall.exe')
+        foreach ($own in 'Lagerfeuer.exe', 'beigabe.txt', 'uninstall.exe', 'Lagerfeuer-installed-files.txt') {
+            Check (-not (Test-Path (Join-Path $foreignTarget $own))) "Deinstallation entfernt $own"
+        }
+        Check (Test-Path (Join-Path $foreignTarget 'fremd.txt')) 'Die fremde Datei bleibt'
+        Check (Test-Path (Join-Path $foreignTarget 'fremder-ordner\notiz.txt')) 'Der fremde Unterordner samt Inhalt bleibt'
+        Check (-not (Test-Path $regKey)) 'Der Eintrag unter „Apps & Features“ ist weg'
+    }
+    finally {
+        Remove-Item -LiteralPath $foreignTarget -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ---------------------------------------------------------------- Ergebnis
 
