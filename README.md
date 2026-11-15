@@ -24,6 +24,16 @@ Unter [Releases](https://github.com/Celestial0579/lagerfeuer/releases) gibt es p
 | `Lagerfeuer-<ver>-win-x64-setup.exe` | **Installer** (empfohlen). Installiert pro Benutzer nach `%LOCALAPPDATA%\Programs\Lagerfeuer`, ohne Adminrechte. Legt Startmenü- und optional Desktop-Verknüpfung an und erscheint unter „Apps & Features“. |
 | `Lagerfeuer-<ver>-win-x64.exe` | **Portable EXE**. Eine einzelne Datei, die .NET und Windows App SDK enthält. Beim ersten Start entpackt sie sich einmalig nach `%TEMP%\.net`. Nach einem Update räumt sie dort den entpackten Stand der vorigen Fassung weg. |
 
+Ab 0.2.5 liegt jedem Release eine Datei `SHA256SUMS` bei, und GitHub bescheinigt, dass die Dateien aus diesem Repo gebaut wurden. Prüfen kannst du beides so:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+```bash
+gh attestation verify Lagerfeuer-0.2.5-win-x64-setup.exe --repo Celestial0579/lagerfeuer
+```
+
 Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
 
 > **Portable EXE bis 0.2.1:** Sie hält sich beim Update für eine Installation, lädt das Setup und installiert Lagerfeuer zusätzlich nach `%LOCALAPPDATA%\Programs\Lagerfeuer`. Wenn du portabel bleiben willst, lade die nächste portable EXE einmal von Hand von der Release-Seite. Neuere Fassungen tauschen sich selbst aus.
@@ -152,7 +162,7 @@ Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests
    ```bash
    git push origin v0.2.0
    ```
-3. Der Workflow [`release.yml`](.github/workflows/release.yml) führt die Tests aus, baut beide Architekturen und legt das GitHub-Release mit allen Dateien an. Die installierten Apps finden es danach von selbst.
+3. Der Workflow [`release.yml`](.github/workflows/release.yml) führt die Tests aus, baut beide Architekturen, schreibt `SHA256SUMS`, bescheinigt die Build-Provenienz und legt das GitHub-Release mit allen Dateien an. Die installierten Apps finden es danach von selbst.
 
 ## Projektstruktur
 

@@ -15,6 +15,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write     # Build-Provenienz (attest-build-provenance)
+  attestations: write
 
 jobs:
   release:
@@ -22,11 +24,11 @@ jobs:
     env:
       SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # komplette Historie + Tags für die Release-Notizen
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
 
@@ -67,6 +69,21 @@ jobs:
         shell: pwsh
         run: Remove-Item -LiteralPath $env:LAGERFEUER_SIGN_PFX -Force -ErrorAction SilentlyContinue
 
+      - name: Prüfsummen (SHA256SUMS)
+        shell: pwsh
+        run: |
+          # Format wie sha256sum: "<hash>  <datei>", prüfbar mit "sha256sum -c SHA256SUMS".
+          $lines = Get-ChildItem artifacts -File -Filter 'Lagerfeuer-*.exe' | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          }
+          [IO.File]::WriteAllText((Join-Path (Resolve-Path artifacts) 'SHA256SUMS'), (($lines -join "`n") + "`n"))
+          Get-Content artifacts/SHA256SUMS
+
+      - name: Build-Provenienz bescheinigen
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: 'artifacts/Lagerfeuer-*.exe'
+
       - name: Release veröffentlichen
         shell: pwsh
         env:
@@ -74,7 +91,7 @@ jobs:
         run: |
           $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           ./build/New-ReleaseNotes.ps1 -Tag '${{ github.ref_name }}' | Set-Content $notes -Encoding utf8
-          gh release create '${{ github.ref_name }}' (Get-ChildItem artifacts -File -Filter 'Lagerfeuer-*.exe').FullName `
+          gh release create '${{ github.ref_name }}' (Get-ChildItem artifacts -File -Filter 'Lagerfeuer-*.exe').FullName (Resolve-Path artifacts/SHA256SUMS).Path `
             --title 'Lagerfeuer ${{ github.ref_name }}' --notes-file $notes
 
       - name: winget-Manifeste erzeugen
@@ -85,7 +102,7 @@ jobs:
           $version = '${{ github.ref_name }}'.TrimStart('v')
           ./build/New-WingetManifest.ps1 -Version $version
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: winget-manifests
           path: artifacts/winget/
