@@ -97,7 +97,7 @@ public class UpdateProgramCheckTests : IDisposable
     }
 
     private static UpdateAsset Asset(string name, byte[] inhalt)
-        => new(name, "https://example.test/" + name, inhalt.Length, Convert.ToHexString(SHA256.HashData(inhalt)));
+        => new(name, "https://github.com/Celestial0579/lagerfeuer/releases/download/v1.0.0/" + name, inhalt.Length, Convert.ToHexString(SHA256.HashData(inhalt)));
 
     [Fact]
     public async Task Download_TextdateiMitPassenderPruefsumme_WirdVerworfen()

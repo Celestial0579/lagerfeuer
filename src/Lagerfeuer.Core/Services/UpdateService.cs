@@ -161,6 +161,8 @@ public sealed class UpdateService
         // Dateiname nach dem Muster der Release-Dateien sein, sonst wird nichts geladen und nichts geschrieben.
         if (!IsExpectedAssetName(asset.Name, _portable, _rid))
             throw new InvalidOperationException("Der Dateiname des Updates ist unerwartet – es wird nicht geladen.");
+        if (!IsReleaseDownloadUrl(asset.DownloadUrl))
+            throw new InvalidOperationException("Die Adresse des Updates gehört nicht zu den Releases von Lagerfeuer – es wird nicht geladen.");
         var name = Path.GetFileName(asset.Name);
         var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, name)
             : _portable ? Environment.ProcessPath + ".new"
@@ -567,6 +569,21 @@ public sealed class UpdateService
         => name is not null && Regex.IsMatch(name,
             $@"\ALagerfeuer-[0-9]+(\.[0-9]+){{1,3}}-{Regex.Escape(rid)}{(portable ? "" : "-setup")}\.exe\z",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Kommt die Adresse aus den Releases dieses Repos? Verlangt sind https, der Host github.com ohne Anmeldedaten
+    /// und eigenen Port und ein Pfad unter „/Celestial0579/lagerfeuer/releases/download/“. Die Adresse stammt aus
+    /// der Antwort der API; ohne diese Prüfung würde jede dort genannte Adresse geladen (#49). Die Weiterleitung von
+    /// GitHub zum Speicher folgt danach; von https auf http leitet HttpClient nicht weiter.
+    /// </summary>
+    internal static bool IsReleaseDownloadUrl(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var u)
+           && u.Scheme == Uri.UriSchemeHttps
+           && u.IsDefaultPort
+           && string.IsNullOrEmpty(u.UserInfo)
+           && u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+           && u.AbsolutePath.StartsWith($"/{RepositoryOwner}/{RepositoryName}/releases/download/", StringComparison.OrdinalIgnoreCase)
+           && !u.AbsolutePath.Contains("/../", StringComparison.Ordinal);
 
     private static Version Normalize(Version v) => new(v.Major, Math.Max(0, v.Minor), Math.Max(0, v.Build));
 

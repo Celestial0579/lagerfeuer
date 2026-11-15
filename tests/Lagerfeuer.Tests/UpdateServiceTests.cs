@@ -126,7 +126,7 @@ public class UpdateServiceTests : IDisposable
     {
         var service = Create(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(SetupBytes) });
         var progress = new List<double>();
-        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://example.test/setup.exe", SetupBytes.Length, SetupDigest[7..]);
+        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/Lagerfeuer-0.2.0-win-x64-setup.exe", SetupBytes.Length, SetupDigest[7..]);
 
         var file = await service.DownloadAsync(asset, new SyncProgress(progress.Add), TestContext.Current.CancellationToken);
 
@@ -138,7 +138,7 @@ public class UpdateServiceTests : IDisposable
     public async Task Download_MitFalscherPruefsumme_WirdVerworfen()
     {
         var service = Create(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("manipuliert"u8.ToArray()) });
-        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://example.test/setup.exe", 11, SetupDigest[7..]);
+        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/Lagerfeuer-0.2.0-win-x64-setup.exe", 11, SetupDigest[7..]);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadAsync(asset, null, TestContext.Current.CancellationToken));
         Assert.False(File.Exists(Path.Combine(_dir.Path, asset.Name)));
@@ -154,7 +154,7 @@ public class UpdateServiceTests : IDisposable
         var lower = SetupDigest[7..];
         Assert.NotEqual(lower, lower.ToUpperInvariant()); // sonst prüft der Test nichts
         var service = Create(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(SetupBytes) });
-        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://example.test/setup.exe", SetupBytes.Length,
+        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/Lagerfeuer-0.2.0-win-x64-setup.exe", SetupBytes.Length,
             upper ? lower.ToUpperInvariant() : lower);
 
         var file = await service.DownloadAsync(asset, null, TestContext.Current.CancellationToken);
@@ -176,7 +176,7 @@ public class UpdateServiceTests : IDisposable
     {
         var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(SetupBytes) });
         var service = new UpdateService(new HttpClient(handler), new Version(0, 1, 0), false, "win-x64", _dir.Path);
-        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://example.test/setup.exe", SetupBytes.Length, sha256);
+        var asset = new UpdateAsset("Lagerfeuer-0.2.0-win-x64-setup.exe", "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/Lagerfeuer-0.2.0-win-x64-setup.exe", SetupBytes.Length, sha256);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadAsync(asset, null, TestContext.Current.CancellationToken));
 

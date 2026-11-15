@@ -29,7 +29,7 @@ public class UpdateAssetNameTests : IDisposable
             assets = assetNames.Select(name => new
             {
                 name,
-                browser_download_url = "https://example.test/download",
+                browser_download_url = "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/datei",
                 size = Bytes.Length,
                 digest = "sha256:" + Sha256,
             }),
@@ -111,7 +111,7 @@ public class UpdateAssetNameTests : IDisposable
     public async Task Download_MitErwartetemNamen_LandetImZielverzeichnis()
     {
         var (service, _) = Create(_ => Datei());
-        var asset = new UpdateAsset(Setup, "https://example.test/download", Bytes.Length, Sha256);
+        var asset = new UpdateAsset(Setup, "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/datei", Bytes.Length, Sha256);
 
         var file = await service.DownloadAsync(asset, null, TestContext.Current.CancellationToken);
 
@@ -127,7 +127,7 @@ public class UpdateAssetNameTests : IDisposable
     public async Task Download_MitUnerwartetemNamen_LaedtNichtsUndSchreibtNichts(string name)
     {
         var (service, handler) = Create(_ => Datei());
-        var asset = new UpdateAsset(name, "https://example.test/download", Bytes.Length, Sha256);
+        var asset = new UpdateAsset(name, "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/datei", Bytes.Length, Sha256);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadAsync(asset, null, TestContext.Current.CancellationToken));
 
@@ -143,7 +143,7 @@ public class UpdateAssetNameTests : IDisposable
         // nicht im gemeinsamen Temp-Ordner aller Testläufe.
         var ziel = Directory.CreateDirectory(Path.Combine(_dir.Path, "ziel")).FullName;
         var (service, handler) = Create(_ => Datei(), ziel);
-        var asset = new UpdateAsset(Path.Combine("..", Setup), "https://example.test/download", Bytes.Length, Sha256);
+        var asset = new UpdateAsset(Path.Combine("..", Setup), "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/datei", Bytes.Length, Sha256);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadAsync(asset, null, TestContext.Current.CancellationToken));
 
@@ -157,7 +157,7 @@ public class UpdateAssetNameTests : IDisposable
     {
         using var fremd = new TempDir();
         var (service, handler) = Create(_ => Datei());
-        var asset = new UpdateAsset(Path.Combine(fremd.Path, Setup), "https://example.test/download", Bytes.Length, Sha256);
+        var asset = new UpdateAsset(Path.Combine(fremd.Path, Setup), "https://github.com/Celestial0579/lagerfeuer/releases/download/v0.2.0/datei", Bytes.Length, Sha256);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadAsync(asset, null, TestContext.Current.CancellationToken));
 
