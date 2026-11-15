@@ -95,6 +95,9 @@ function Get-NsisSignCommand {
 
 $version = (& dotnet msbuild $project -nologo -getProperty:Version).Trim()
 Write-Host "Lagerfeuer $version" -ForegroundColor Cyan
+# Vorabversion (0.2.5-beta.1): Dateinamen und Anzeige mit vollem Namen, die Versionsnummer im Setup nur X.Y.Z.
+$versionNumber = $version.Split('+')[0].Split('-')[0]
+if ($versionNumber -notmatch '^\d+\.\d+\.\d+$') { throw "Version $version hat keine Nummer X.Y.Z." }
 New-Item -ItemType Directory -Force $artifacts | Out-Null
 
 $makensis = $null
@@ -137,7 +140,7 @@ foreach ($p in $Platform) {
         Invoke-Publish $p $folderDir @()
         Invoke-Sign @((Join-Path $folderDir 'Lagerfeuer.exe'))
         $setup = Join-Path $artifacts "Lagerfeuer-$version-$rid-setup.exe"
-        $nsisArgs = @('/V2', '/INPUTCHARSET', 'UTF8', "/DVERSION=$version", "/DARCH=$p", "/DSRCDIR=$folderDir", "/DOUTFILE=$setup", "/DICON=$icon")
+        $nsisArgs = @('/V2', '/INPUTCHARSET', 'UTF8', "/DVERSION=$version", "/DVERSIONNUM=$versionNumber", "/DARCH=$p", "/DSRCDIR=$folderDir", "/DOUTFILE=$setup", "/DICON=$icon")
         if ($cmd = Get-NsisSignCommand) { $nsisArgs += "/DSIGNCMD=$cmd" }
         & $makensis @nsisArgs $nsi
         if ($LASTEXITCODE -ne 0) { throw "makensis ($p) fehlgeschlagen." }

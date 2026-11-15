@@ -19,6 +19,10 @@ RequestExecutionLevel user
 !ifndef VERSION
   !error "VERSION fehlt (/DVERSION=x.y.z)"
 !endif
+; Rein numerisch für die Versionsinfo der EXE (X.Y.Z); VERSION darf eine Vorabversion sein (0.2.5-beta.1).
+!ifndef VERSIONNUM
+  !define VERSIONNUM "${VERSION}"
+!endif
 !ifndef SRCDIR
   !error "SRCDIR fehlt (/DSRCDIR=<dotnet publish Ausgabeordner>)"
 !endif
@@ -67,11 +71,11 @@ BrandingText "${APPNAME} ${VERSION} (${ARCH})"
 InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
 InstallDirRegKey HKCU "${SETTINGSKEY}" "InstallDir"
 
-VIProductVersion "${VERSION}.0"
+VIProductVersion "${VERSIONNUM}.0"
 VIAddVersionKey /LANG=1031 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=1031 "FileDescription" "${DISPLAYNAME} – Setup"
 VIAddVersionKey /LANG=1031 "CompanyName" "${PUBLISHER}"
-VIAddVersionKey /LANG=1031 "FileVersion" "${VERSION}"
+VIAddVersionKey /LANG=1031 "FileVersion" "${VERSIONNUM}"
 VIAddVersionKey /LANG=1031 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1031 "LegalCopyright" "GPL-3.0"
 
