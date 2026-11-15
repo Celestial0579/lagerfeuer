@@ -19,6 +19,8 @@
          alten Schlüssel Software\Lagerfeuer und löscht ihn, die Deinstallation räumt beide weg (#48).
       7  Die Deinstallation entfernt nur die installierten Dateien; Fremdes im gewählten Ordner bleibt, im Profil und
          im Laufwerksstamm. Ein Update entfernt, was die neue Fassung nicht mehr mitbringt (#47).
+      8  Ein Installationspfad mit Leerzeichen, Umlauten und großer Länge funktioniert für Setup, Registry und
+         Deinstallation (#49).
 
     Die Köder sind harmlose Programme. Sie schreiben nur auf, dass sie gestartet wurden.
 
@@ -433,6 +435,27 @@ foreach ($foreignTarget in (Join-Path $env:LOCALAPPDATA "Lagerfeuer-Fremd-$PID")
     finally {
         Remove-Item -LiteralPath $foreignTarget -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# ---------------------------------------------------------------- 8 Pfade mit Leerzeichen, Umlauten und Länge
+
+Step '8 Installationspfad mit Leerzeichen, Umlauten und großer Länge (#49)'
+# /D= muss das letzte Argument sein und steht ohne Anführungszeichen; Leerzeichen gehören zum Pfad.
+$oddTarget = Join-Path $env:LOCALAPPDATA ("Prüfung Hörbücher Ä Ö Ü ß $PID\" + ('Ein ziemlich langer Ordnername ' * 4).Trim() + '\Lagerfeuer Programm')
+Write-Host "        Pfad mit $($oddTarget.Length) Zeichen"
+try {
+    $code = Invoke-Program $setup @('/S', "/D=$oddTarget") $Work
+    Check ($code -eq 0) "Exitcode 0 (war $code)"
+    Check (Test-Path -LiteralPath (Join-Path $oddTarget 'Lagerfeuer.exe')) 'Die Programmdatei liegt im gewählten Pfad'
+    Check ((Get-ItemProperty -LiteralPath 'HKCU:\Software\Celestial0579\Lagerfeuer' -ErrorAction SilentlyContinue).InstallDir -eq $oddTarget) 'Der Registry-Schlüssel nennt genau diesen Pfad'
+    $uninstall = (Get-ItemProperty -LiteralPath $regKey -ErrorAction SilentlyContinue).UninstallString
+    Check ($uninstall -eq "`"$oddTarget\uninstall.exe`"") 'Der Deinstallationsbefehl steht in Anführungszeichen'
+    $null = Invoke-Program (Join-Path $oddTarget 'uninstall.exe') @('/S') $Work
+    Wait-Gone $oddTarget
+    Check (-not (Test-Path -LiteralPath $oddTarget)) 'Die Deinstallation entfernt den Ordner'
+}
+finally {
+    Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA "Prüfung Hörbücher Ä Ö Ü ß $PID") -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------- Ergebnis
