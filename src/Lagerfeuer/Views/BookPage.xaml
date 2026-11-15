@@ -101,6 +101,15 @@
                                             Padding="6"
                                             Background="Transparent"
                                             BorderThickness="0"
+                                            Click="OnRenameBookmark"
+                                            Tag="{x:Bind}"
+                                            ToolTipService.ToolTip="Lesezeichen umbenennen">
+                                            <FontIcon FontSize="12" Glyph="&#xE8AC;" />
+                                        </Button>
+                                        <Button
+                                            Padding="6"
+                                            Background="Transparent"
+                                            BorderThickness="0"
                                             Click="OnDeleteBookmark"
                                             Tag="{x:Bind}"
                                             ToolTipService.ToolTip="Lesezeichen löschen">

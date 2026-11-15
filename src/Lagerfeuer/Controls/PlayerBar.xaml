@@ -162,7 +162,7 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button Click="OnAddBookmark" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Lesezeichen an dieser Stelle setzen">
+            <Button x:Name="BookmarkButton" Click="OnAddBookmark" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Lesezeichen an dieser Stelle setzen">
                 <FontIcon Glyph="&#xE8A4;" />
             </Button>
             <Button Click="OnMiniPlayer" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Mini-Player (immer im Vordergrund)">

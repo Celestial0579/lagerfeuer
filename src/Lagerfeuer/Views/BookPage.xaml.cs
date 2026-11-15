@@ -154,6 +154,11 @@ public sealed partial class BookPage : Page
         if (_item is not null && e.ClickedItem is Models.Bookmark bm) _ = App.Player.PlayItemAsync(_item.Id, bm.Time);
     }
 
+    private async void OnRenameBookmark(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is Models.Bookmark bm) await BookmarkRename.RunAsync(XamlRoot, bm);
+    }
+
     private async void OnDeleteBookmark(object sender, RoutedEventArgs e)
     {
         if (_item is null || ((FrameworkElement)sender).Tag is not Models.Bookmark bm) return;
