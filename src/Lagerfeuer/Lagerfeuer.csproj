@@ -23,7 +23,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Product>Lagerfeuer</Product>
-    <Company>Lagerfeuer</Company>
+    <Company>Celestial0579</Company>
+    <Copyright>© 2026 Celestial0579 · GPL-3.0</Copyright>
     <Description>Audiobookshelf-Client für Windows</Description>
     <!-- Nötig für PublishSingleFile (eingebettete resources.pri), siehe build/publish.ps1 -->
     <EnableMsixTooling>true</EnableMsixTooling>

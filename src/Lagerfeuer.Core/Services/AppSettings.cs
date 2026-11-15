@@ -26,13 +26,44 @@ public static class AppPaths
         {
             // nicht kritisch
         }
+        // Bis 0.2.5-beta.1 lag das Log direkt im Datenordner (log.txt), jetzt unter logs\ (#49).
+        try
+        {
+            var oldLog = Path.Combine(Root, "log.txt");
+            if (File.Exists(oldLog))
+            {
+                Directory.CreateDirectory(LogDirectory);
+                if (!File.Exists(LogFile)) File.Move(oldLog, LogFile);
+                else File.Delete(oldLog);
+            }
+        }
+        catch
+        {
+            // nicht kritisch
+        }
     }
 
     public static string Cache => Path.Combine(Root, "cache");
     public static string Covers => Path.Combine(Root, "covers");
     public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string CredentialsFile => Path.Combine(Root, "credentials.bin");
-    public static string LogFile => Path.Combine(Root, "log.txt");
+    public static string LogDirectory => Path.Combine(Root, "logs");
+    public static string LogFile => Path.Combine(LogDirectory, "lagerfeuer.log");
+
+    /// <summary>Größe, ab der das Log in die Vorgängerdatei wandert (eine Generation, zusammen höchstens 4 MB).</summary>
+    public const long LogLimitBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// Ist <paramref name="log"/> größer als <paramref name="limit"/>, wird es zu „&lt;Name&gt;.1&lt;Endung&gt;“
+    /// (eine ältere Vorgängerdatei fällt weg). So bleibt beim Wechsel der Verlauf bis kurz davor erhalten.
+    /// </summary>
+    internal static void RotateLog(string log, long limit)
+    {
+        var fi = new FileInfo(log);
+        if (!fi.Exists || fi.Length <= limit) return;
+        var previous = Path.Combine(fi.DirectoryName!, Path.GetFileNameWithoutExtension(log) + ".1" + fi.Extension);
+        File.Move(log, previous, overwrite: true);
+    }
 }
 
 public sealed class AppSettings
@@ -146,9 +177,8 @@ public static class Log
         {
             lock (Sync)
             {
-                Directory.CreateDirectory(AppPaths.Root);
-                var fi = new FileInfo(AppPaths.LogFile);
-                if (fi.Exists && fi.Length > 2 * 1024 * 1024) fi.Delete();
+                Directory.CreateDirectory(AppPaths.LogDirectory);
+                AppPaths.RotateLog(AppPaths.LogFile, AppPaths.LogLimitBytes);
                 File.AppendAllText(AppPaths.LogFile, line + Environment.NewLine);
             }
         }

@@ -77,7 +77,7 @@ VIAddVersionKey /LANG=1031 "FileDescription" "${DISPLAYNAME} – Setup"
 VIAddVersionKey /LANG=1031 "CompanyName" "${PUBLISHER}"
 VIAddVersionKey /LANG=1031 "FileVersion" "${VERSIONNUM}"
 VIAddVersionKey /LANG=1031 "ProductVersion" "${VERSION}"
-VIAddVersionKey /LANG=1031 "LegalCopyright" "GPL-3.0"
+VIAddVersionKey /LANG=1031 "LegalCopyright" "© 2026 Celestial0579 · GPL-3.0"
 
 ; Optional signieren (von build/publish.ps1 gesetzt): Setup und eingebetteten Deinstaller
 !ifdef SIGNCMD

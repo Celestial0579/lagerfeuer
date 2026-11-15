@@ -128,7 +128,7 @@ Portable EXE und Installer nach `artifacts/` bauen:
 pwsh build/publish.ps1 -Platform x64,ARM64 -Installer
 ```
 
-Daten (Einstellungen, Tokens, Cache, Log) liegen unter `%LOCALAPPDATA%\Lagerfeuer`.
+Daten (Einstellungen, Tokens, Cache) liegen unter `%LOCALAPPDATA%\Lagerfeuer`, das Log unter `%LOCALAPPDATA%\Lagerfeuer\logs` (höchstens zwei Dateien zu je 2 MB). Die Deinstallation entfernt sie nur, wenn du „Benutzerdaten entfernen“ wählst.
 
 ### Tests
 
