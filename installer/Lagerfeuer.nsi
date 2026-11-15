@@ -32,6 +32,19 @@ RequestExecutionLevel user
   !define ICON "..\src\Lagerfeuer\Assets\AppIcon.ico"
 !endif
 
+; Was das Setup installiert, als Delete-Befehle für die Deinstallation: beim Übersetzen aus SRCDIR erzeugt (#47).
+; So entfernt die Deinstallation genau die installierten Dateien und nichts, was sonst im frei wählbaren Ordner
+; liegt. Dieselbe Liste kommt als Textdatei mit in den Installationsordner (MANIFESTNAME). Ein späteres Setup liest
+; dort, was die bisherige Fassung installiert hat, und entfernt es vor dem Kopieren; so bleibt nichts liegen, wenn
+; in einer neuen Fassung eine Datei wegfällt. Befolgt wird nur eine Liste, die mit der Kennzeile MANIFESTHEAD beginnt.
+; Muster: WidgetTea. Fassungen bis 0.2.4 hatten keine Liste; was sie mitbrachten und die neue nicht mehr enthält,
+; bleibt nach einem Update liegen und mit ihm der Ordner nach der Deinstallation.
+!define MANIFESTNAME "Lagerfeuer-installed-files.txt"
+!define MANIFESTHEAD "Lagerfeuer installed files 1"
+!tempfile PAYLOADLIST
+!tempfile MANIFESTFILE
+!system 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${__FILEDIR__}\New-PayloadList.ps1" -Source "${SRCDIR}" -Out "${PAYLOADLIST}" -Manifest "${MANIFESTFILE}" -ManifestHeader "${MANIFESTHEAD}"' = 0
+
 !define APPNAME     "Lagerfeuer"
 !define DISPLAYNAME "Lagerfeuer – Audiobookshelf für Windows"
 !define PUBLISHER   "Celestial0579"
@@ -215,6 +228,111 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+; ---------- Dateiliste der bisherigen Fassung (#47) ----------
+
+; Push Pfad / Pop 1, wenn er ein schlichter Pfad unterhalb des Installationsordners ist: nicht leer, ohne
+; führenden „\“, ohne „..“ und ohne : / * ?. Sonst 0.
+Function IsPlainRelativePath
+  Exch $R1
+  Push $R2
+  Push $R3
+  Push $R4
+  Push $R5
+  StrCpy $R3 1
+  StrLen $R5 $R1
+  ${If} $R5 == 0
+    StrCpy $R3 0
+  ${EndIf}
+  StrCpy $R2 $R1 1
+  ${If} $R2 == "\"
+    StrCpy $R3 0
+  ${EndIf}
+  StrCpy $R4 0
+  ${DoWhile} $R4 < $R5
+    StrCpy $R2 $R1 1 $R4
+    ${If} $R2 == ":"
+    ${OrIf} $R2 == "/"
+    ${OrIf} $R2 == "*"
+    ${OrIf} $R2 == "?"
+      StrCpy $R3 0
+    ${EndIf}
+    StrCpy $R2 $R1 2 $R4
+    ${If} $R2 == ".."
+      StrCpy $R3 0
+    ${EndIf}
+    IntOp $R4 $R4 + 1
+  ${Loop}
+  StrCpy $R1 $R3
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Exch $R1
+FunctionEnd
+
+; Entfernt, was die bisher installierte Fassung mitgebracht hat, laut ihrer Liste im Installationsordner.
+; Was die neue Fassung weiter enthält, schreibt das Setup gleich danach wieder hin; was weggefallen ist, bleibt
+; weg. Fremde Dateien stehen in keiner Liste und bleiben liegen. Ein Ordner verschwindet nur, wenn er leer ist.
+; Ohne Liste (bis 0.2.4) oder ohne die Kennzeile geschieht nichts.
+Function RemovePreviousPayload
+  ${IfNot} ${FileExists} "$INSTDIR\${MANIFESTNAME}"
+    Return
+  ${EndIf}
+  ClearErrors
+  FileOpen $R0 "$INSTDIR\${MANIFESTNAME}" r
+  ${If} ${Errors}
+    Return
+  ${EndIf}
+  FileRead $R0 $R1
+  ${Do}                             ; Zeilenende der Kennzeile abschneiden
+    StrCpy $R2 $R1 1 -1
+    ${If} $R2 == "$\r"
+    ${OrIf} $R2 == "$\n"
+      StrCpy $R1 $R1 -1
+    ${Else}
+      ${ExitDo}
+    ${EndIf}
+  ${Loop}
+  ${If} $R1 S!= "${MANIFESTHEAD}"
+    FileClose $R0
+    Return
+  ${EndIf}
+  ${Do}
+    ClearErrors
+    FileRead $R0 $R1
+    ${If} ${Errors}
+      ${ExitDo}
+    ${EndIf}
+    ${Do}                           ; Zeilenende abschneiden
+      StrCpy $R2 $R1 1 -1
+      ${If} $R2 == "$\r"
+      ${OrIf} $R2 == "$\n"
+        StrCpy $R1 $R1 -1
+      ${Else}
+        ${ExitDo}
+      ${EndIf}
+    ${Loop}
+    StrCpy $R2 $R1 1 -1
+    ${If} $R2 == "\"                ; Ordner stehen mit „\“ am Ende in der Liste
+      StrCpy $R1 $R1 -1
+      Push $R1
+      Call IsPlainRelativePath
+      Pop $R2
+      ${If} $R2 == 1
+        RMDir "$INSTDIR\$R1"
+      ${EndIf}
+    ${Else}
+      Push $R1
+      Call IsPlainRelativePath
+      Pop $R2
+      ${If} $R2 == 1
+        Delete "$INSTDIR\$R1"
+      ${EndIf}
+    ${EndIf}
+  ${Loop}
+  FileClose $R0
+FunctionEnd
+
 ; ---------- Rechte des Installationsordners (#46) ----------
 ; Unter dem Benutzerprofil (Vorgabe: %LOCALAPPDATA%\Programs\Lagerfeuer) kann nur der Benutzer selbst schreiben.
 ; Ein frei gewählter Ordner wie C:\Lagerfeuer erbt dagegen die Rechte seines Elternordners; im Laufwerksstamm dürfen
@@ -303,9 +421,12 @@ Section "Lagerfeuer (erforderlich)" SecMain
   SetShellVarContext current
   Call CloseRunningApp
   Call SecureInstDir
+  ; Was die bisherige Fassung installiert hat und die neue nicht mehr enthält, soll nicht liegen bleiben.
+  Call RemovePreviousPayload
 
   SetOutPath "$INSTDIR"
   File /r "${SRCDIR}\*.*"
+  File "/oname=${MANIFESTNAME}" "${MANIFESTFILE}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   CreateShortcut "$SMPROGRAMS\Lagerfeuer.lnk" "$INSTDIR\${EXENAME}" "" "$INSTDIR\${EXENAME}" 0 SW_SHOWNORMAL "" "Hörbücher aus Audiobookshelf"
@@ -351,13 +472,12 @@ Section "un.Lagerfeuer" SecUnMain
   Delete "$SMPROGRAMS\Lagerfeuer.lnk"
   Delete "$DESKTOP\Lagerfeuer.lnk"
 
-  ; Nur löschen, wenn es wirklich unser Ordner ist.
-  ${If} ${FileExists} "$INSTDIR\${EXENAME}"
-    RMDir /r "$INSTDIR"
-  ${Else}
-    Delete "$INSTDIR\uninstall.exe"
-    RMDir "$INSTDIR"
-  ${EndIf}
+  ; Nur entfernen, was das Setup installiert hat (#47). Der Ordner ist frei wählbar; was dort sonst noch liegt,
+  ; gehört nicht Lagerfeuer und bleibt. Der Ordner selbst verschwindet nur, wenn er danach leer ist.
+  !include "${PAYLOADLIST}"
+  Delete "$INSTDIR\${MANIFESTNAME}"
+  Delete "$INSTDIR\uninstall.exe"
+  RMDir "$INSTDIR"
 
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "${SETTINGSKEY}"
@@ -381,6 +501,9 @@ Section /o "un.Benutzerdaten entfernen" SecUnData
 SectionEnd
 
 !insertmacro MUI_UNFUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecUnMain} "Entfernt die Anwendung."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecUnMain} "Entfernt die Anwendung. Andere Dateien im Installationsordner bleiben."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecUnData} "Löscht zusätzlich Einstellungen, gespeicherte Anmeldung und den Audio-Cache."
 !insertmacro MUI_UNFUNCTION_DESCRIPTION_END
+
+!delfile "${PAYLOADLIST}"
+!delfile "${MANIFESTFILE}"

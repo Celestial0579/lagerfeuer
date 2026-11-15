@@ -146,7 +146,7 @@ dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj
 
 Auf GitHub laufen die Tests bei jedem Push und Pull Request ([`ci.yml`](.github/workflows/ci.yml)) sowie vor jedem Release.
 
-Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests/installer/Test-Installer.ps1), in der CI der Job „Setup-Prüfung“). Sie baut aus `installer/Lagerfeuer.nsi` ein Probe-Setup mit winziger Nutzlast und stellt sicher, dass Setup und Deinstallation keine fremden Programme starten, die neben ihnen liegen, und dass sie abbrechen, solange Lagerfeuer läuft. Sie braucht Windows und NSIS; für die Gegenprobe lädt sie das veröffentlichte Setup über `gh` (ohne Netz: `-SkipOld`):
+Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests/installer/Test-Installer.ps1), in der CI der Job „Setup-Prüfung“). Sie baut aus `installer/Lagerfeuer.nsi` ein Probe-Setup mit winziger Nutzlast und stellt sicher, dass Setup und Deinstallation keine fremden Programme starten, die neben ihnen liegen, und dass sie abbrechen, solange Lagerfeuer läuft. Außerdem prüft sie die Rechte eines frei gewählten Ordners, den Registry-Schlüssel und dass die Deinstallation nur die installierten Dateien entfernt. Sie braucht Windows und NSIS; für die Gegenprobe lädt sie das veröffentlichte Setup über `gh` (ohne Netz: `-SkipOld`):
 
 ```powershell
 ./tests/installer/Test-Installer.ps1
