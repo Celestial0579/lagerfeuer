@@ -94,7 +94,7 @@ Den Handler für `lagerfeuer://` registriert Lagerfeuer beim ersten SSO-Login se
 
 Lagerfeuer fragt kurz nach dem Start und danach alle 12 Stunden die Releases-API von GitHub (`releases/latest`) nach einer neueren Version. Entwürfe und Vorabversionen werden ignoriert. Gibt es ein Update, erscheint oben ein Hinweis mit drei Möglichkeiten:
 - **Jetzt aktualisieren:**
-  1. Lagerfeuer lädt die passende Datei herunter und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert. Liefert GitHub keine Prüfsumme, wird nichts geladen und nichts installiert. Danach prüft es am Kopf der Datei, ob sie ein Windows-Programm für diesen Rechner ist; was keines ist, wird verworfen.
+  1. Lagerfeuer lädt die passende Datei herunter, und zwar nur per https aus den Releases dieses Repos, und prüft sie gegen die SHA-256-Prüfsumme, die GitHub zum Asset liefert. Liefert GitHub keine Prüfsumme, wird nichts geladen und nichts installiert. Danach prüft es am Kopf der Datei, ob sie ein Windows-Programm für diesen Rechner ist; was keines ist, wird verworfen.
   2. Die installierte Version führt das Setup still aus (`/S /RESTART`); die portable EXE tauscht sich selbst aus. Scheitert der Tausch, liegt danach wieder die bisherige EXE an ihrem Platz. Solange das Update startet, bleibt das Fenster offen, auch wenn du es schließt; Lagerfeuer beendet sich danach selbst.
   3. Danach startet Lagerfeuer neu.
 - **Was ist neu?** öffnet die Release-Seite.
