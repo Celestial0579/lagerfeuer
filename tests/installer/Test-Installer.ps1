@@ -13,6 +13,8 @@
       3  Im Quelltext des Setups nennt jeder Aufruf eines Programms dieses mit vollem Pfad.
       4  Die App startet kein Programm nur beim Namen: Gegenprobe mit dem früheren Aufruf von explorer.exe,
          dazu der Quelltext.
+      5  Ein frei gewählter Ordner im Laufwerksstamm (wie C:\Lagerfeuer) bekommt Rechte nur für den Benutzer,
+         SYSTEM und die Administratoren; im Benutzerprofil bleibt es bei den geerbten Rechten (#46).
 
     Die Köder sind harmlose Programme. Sie schreiben nur auf, dass sie gestartet wurden.
 
@@ -313,6 +315,55 @@ $literal = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File -
     Select-String -Pattern '(new\s+ProcessStartInfo|Process\.Start)\s*\(\s*\$?@?"')
 foreach ($l in $literal) { Write-Host "        $($l.Path | Split-Path -Leaf):$($l.LineNumber): $($l.Line.Trim())" }
 Check ($literal.Count -eq 0) 'Kein Aufruf nennt das Programm als festen Text'
+
+# ---------------------------------------------------------------- 5 Frei gewählter Ordner im Laufwerksstamm
+
+Step '5 Frei gewählter Ordner im Laufwerksstamm: Zugriff nur für den Benutzer (#46)'
+# Wählt jemand C:\Lagerfeuer, erbt der Ordner die Rechte des Laufwerksstamms; dort dürfen oft alle angemeldeten
+# Benutzer ändern. Ein Unterordner mit einer Datei, die allen Schreibrechte gibt, liegt schon da, wie Reste eines anderen.
+function Get-Sids([string]$Path) {
+    @((Get-Acl -LiteralPath $Path).Access | ForEach-Object {
+        try { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { "$($_.IdentityReference)" }
+    } | Sort-Object -Unique)
+}
+$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$allowed = @($me, 'S-1-5-18', 'S-1-5-32-544')
+$rootTarget = Join-Path "$env:SystemDrive\" "Lagerfeuer-Rechtepruefung-$PID"
+try {
+    New-Item -ItemType Directory -Force (Join-Path $rootTarget 'vorher') | Out-Null
+    Set-Content -LiteralPath (Join-Path $rootTarget 'vorher\alt.txt') -Value 'lag schon da'
+    $fileAcl = Get-Acl -LiteralPath (Join-Path $rootTarget 'vorher\alt.txt')
+    $fileAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')), 'Modify', 'Allow')))
+    Set-Acl -LiteralPath (Join-Path $rootTarget 'vorher\alt.txt') -AclObject $fileAcl
+    Write-Host "        Ausgangslage $rootTarget`: $((Get-Sids $rootTarget) -join ', ')"
+    Check (-not (Get-Acl -LiteralPath $rootTarget).AreAccessRulesProtected) 'Ausgangslage: Der Ordner erbt die Rechte des Laufwerksstamms'
+
+    $code = Invoke-Program $setup @('/S', "/D=$rootTarget") $Work
+    Check ($code -eq 0) "Exitcode 0 (war $code)"
+    Check (Get-Acl -LiteralPath $rootTarget).AreAccessRulesProtected 'Der Installationsordner erbt keine Rechte mehr'
+    $sids = Get-Sids $rootTarget
+    Check ($sids -contains $me) 'Der Benutzer hat Zugriff'
+    Check (-not ($sids | Where-Object { $_ -notin $allowed })) "Sonst nur SYSTEM und die Administratoren ($($sids -join ', '))"
+    foreach ($file in 'Lagerfeuer.exe', 'uninstall.exe', 'vorher\alt.txt') {
+        $fileSids = Get-Sids (Join-Path $rootTarget $file)
+        Check (-not ($fileSids | Where-Object { $_ -notin $allowed })) "$file erbt nur diese Rechte ($($fileSids -join ', '))"
+    }
+    $null = Invoke-Program (Join-Path $rootTarget 'uninstall.exe') @('/S') $Work
+    Wait-Gone (Join-Path $rootTarget 'Lagerfeuer.exe')
+    Check (-not (Test-Path (Join-Path $rootTarget 'Lagerfeuer.exe'))) 'Die Deinstallation entfernt die Programmdateien'
+}
+finally {
+    Remove-Item -LiteralPath $rootTarget -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Im Benutzerprofil bleibt es bei den geerbten Rechten.
+$profileTarget = Join-Path $env:LOCALAPPDATA "Programs\Lagerfeuer-Rechtepruefung-$PID"
+$code = Invoke-Program $setup @('/S', "/D=$profileTarget") $Work
+Check ($code -eq 0) "Exitcode 0 (war $code)"
+Check (-not (Get-Acl -LiteralPath $profileTarget).AreAccessRulesProtected) 'Im Benutzerprofil erbt der Ordner seine Rechte wie bisher'
+$null = Invoke-Program (Join-Path $profileTarget 'uninstall.exe') @('/S') $Work
+Wait-Gone $profileTarget
+Check (-not (Test-Path $profileTarget)) 'Die Deinstallation entfernt den Ordner'
 
 # ---------------------------------------------------------------- Ergebnis
 
