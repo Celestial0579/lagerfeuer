@@ -37,7 +37,11 @@ RequestExecutionLevel user
 !define PUBLISHER   "Celestial0579"
 !define EXENAME     "Lagerfeuer.exe"
 !define UNINSTKEY   "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
-!define SETTINGSKEY "Software\${APPNAME}"
+; Eigene Einstellungen unter Software\<Hersteller>\<Produkt> (#48). Bis 0.2.4 lag der Schlüssel direkt unter
+; Software\Lagerfeuer; das Setup zieht ihn beim Update um.
+!define PUBLISHERKEY "Software\${PUBLISHER}"
+!define SETTINGSKEY "${PUBLISHERKEY}\${APPNAME}"
+!define OLDSETTINGSKEY "Software\${APPNAME}"
 !define PROTOCOLKEY "Software\Classes\lagerfeuer"
 !define FALLBACKPROTOCOLKEY "Software\Classes\audiobookshelf"
 !define HOMEPAGE    "https://github.com/Celestial0579/lagerfeuer"
@@ -180,6 +184,18 @@ Function .onInit
     ${EndIf}
   !endif
 
+  ; Update von 0.2.4 oder älter: Der neue Schlüssel fehlt noch, der Ordner steht im alten. Ohne diesen Schritt
+  ; installierte das Update (der Updater ruft das Setup ohne /D auf) in den Vorgabeordner statt über die alte Fassung.
+  ; Hat der Aufruf mit /D einen anderen Ordner gewählt, bleibt es dabei.
+  ReadRegStr $R0 HKCU "${SETTINGSKEY}" "InstallDir"
+  ${If} $R0 == ""
+  ${AndIf} $INSTDIR == "$LOCALAPPDATA\Programs\${APPNAME}"
+    ReadRegStr $R0 HKCU "${OLDSETTINGSKEY}" "InstallDir"
+    ${If} $R0 != ""
+      StrCpy $INSTDIR $R0
+    ${EndIf}
+  ${EndIf}
+
   StrCpy $Restart 0
   ${GetParameters} $R0
   ClearErrors
@@ -310,6 +326,7 @@ Section "Lagerfeuer (erforderlich)" SecMain
   WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" "$0"
 
   WriteRegStr HKCU "${SETTINGSKEY}" "InstallDir" "$INSTDIR"
+  DeleteRegKey HKCU "${OLDSETTINGSKEY}"
 SectionEnd
 
 Section "Desktop-Verknüpfung" SecDesktop
@@ -344,6 +361,8 @@ Section "un.Lagerfeuer" SecUnMain
 
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "${SETTINGSKEY}"
+  DeleteRegKey HKCU "${OLDSETTINGSKEY}"
+  DeleteRegKey /ifempty HKCU "${PUBLISHERKEY}"
 
   ; Protokoll-Handler lagerfeuer:// und audiobookshelf:// (für SSO; legt die App selbst an) – nur wenn sie auf uns zeigen
   ReadRegStr $0 HKCU "${PROTOCOLKEY}\shell\open\command" ""

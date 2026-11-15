@@ -15,6 +15,8 @@
          dazu der Quelltext.
       5  Ein frei gewählter Ordner im Laufwerksstamm (wie C:\Lagerfeuer) bekommt Rechte nur für den Benutzer,
          SYSTEM und die Administratoren; im Benutzerprofil bleibt es bei den geerbten Rechten (#46).
+      6  Die Einstellungen liegen unter Software\Celestial0579\Lagerfeuer; ein Update übernimmt den Ordner aus dem
+         alten Schlüssel Software\Lagerfeuer und löscht ihn, die Deinstallation räumt beide weg (#48).
 
     Die Köder sind harmlose Programme. Sie schreiben nur auf, dass sie gestartet wurden.
 
@@ -364,6 +366,38 @@ Check (-not (Get-Acl -LiteralPath $profileTarget).AreAccessRulesProtected) 'Im B
 $null = Invoke-Program (Join-Path $profileTarget 'uninstall.exe') @('/S') $Work
 Wait-Gone $profileTarget
 Check (-not (Test-Path $profileTarget)) 'Die Deinstallation entfernt den Ordner'
+
+# ---------------------------------------------------------------- 6 Registry: Umzug des Einstellungsschlüssels
+
+Step '6 Registry: Einstellungen unter Software\Celestial0579\Lagerfeuer, Umzug vom alten Schlüssel (#48)'
+# Bis 0.2.4 lag InstallDir unter Software\Lagerfeuer. Der Updater ruft das Setup ohne /D auf; es muss den Ordner
+# aus dem alten Schlüssel übernehmen, auch wenn er nicht der Vorgabeordner ist.
+$oldKey = 'HKCU:\Software\Lagerfeuer'
+$newKey = 'HKCU:\Software\Celestial0579\Lagerfeuer'
+$publisherKey = 'HKCU:\Software\Celestial0579'
+$movedTarget = Join-Path $env:LOCALAPPDATA "Programs\Lagerfeuer-Umzug-$PID"
+$code = Invoke-Program $setup @('/S', "/D=$movedTarget") $Work
+Check ($code -eq 0) "Ausgangslage: Installation nach $movedTarget, Exitcode 0 (war $code)"
+# Zustand wie nach 0.2.4 herstellen: nur der alte Schlüssel kennt den Ordner.
+Remove-Item -LiteralPath $newKey -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -Path $oldKey -Force | Out-Null
+Set-ItemProperty -LiteralPath $oldKey -Name InstallDir -Value $movedTarget
+Remove-Item -LiteralPath (Join-Path $movedTarget 'Aaa-neu.txt') -ErrorAction SilentlyContinue
+
+$code = Invoke-Program $setup2 @('/S') $Work
+Check ($code -eq 0) "Update ohne /D: Exitcode 0 (war $code)"
+Check (Test-Path (Join-Path $movedTarget 'Aaa-neu.txt')) 'Das Update landet im Ordner aus dem alten Schlüssel'
+$defaultTarget = Join-Path $env:LOCALAPPDATA 'Programs\Lagerfeuer'
+Check (-not (Test-Path (Join-Path $defaultTarget 'Aaa-neu.txt'))) 'Nicht im Vorgabeordner'
+Check ((Get-ItemProperty -LiteralPath $newKey -ErrorAction SilentlyContinue).InstallDir -eq $movedTarget) 'Der neue Schlüssel nennt den Ordner'
+Check (-not (Test-Path $oldKey)) 'Der alte Schlüssel ist weg'
+
+$null = Invoke-Program (Join-Path $movedTarget 'uninstall.exe') @('/S') $Work
+Wait-Gone $movedTarget
+Check (-not (Test-Path $movedTarget)) 'Die Deinstallation entfernt den Ordner'
+Check (-not (Test-Path $newKey)) 'Der neue Schlüssel ist weg'
+Check (-not (Test-Path $oldKey)) 'Der alte Schlüssel bleibt weg'
+Check (-not (Test-Path $publisherKey) -or @(Get-ChildItem $publisherKey).Count -gt 0 -or @((Get-Item $publisherKey).Property).Count -gt 0) 'Software\Celestial0579 bleibt nur, wenn noch etwas darin liegt'
 
 # ---------------------------------------------------------------- Ergebnis
 
