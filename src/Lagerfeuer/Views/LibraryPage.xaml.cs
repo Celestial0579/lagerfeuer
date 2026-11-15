@@ -116,7 +116,8 @@ public sealed partial class LibraryPage : Page
         if (reload || _all is null || _all.HasError)
         {
             _all = new IncrementalBookCollection(_library!.Id, App.Api, CurrentQuery());
-            _all.LoadFailed += (_, ex) => App.MainWindow.ShowError($"Bibliothek konnte nicht geladen werden: {ex.Message}");
+            _all.LoadFailed += (_, ex) => App.MainWindow.ShowError($"Bibliothek konnte nicht geladen werden: {ex.Message}", MessageOrigins.Library);
+            _all.LoadSucceeded += (_, _) => App.MainWindow.ClearError(MessageOrigins.Library);
         }
         NoResults.Visibility = Visibility.Collapsed;
         BooksGrid.ItemsSource = _all;
@@ -156,11 +157,12 @@ public sealed partial class LibraryPage : Page
                 if (resp.Results.Count == 0 || list.Count >= resp.Total) break;
             }
             _seriesLoaded = true;
+            App.MainWindow.ClearError(MessageOrigins.Series);
             NoResults.Visibility = list.Count == 0 && SeriesGrid.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Serien konnten nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Serien konnten nicht geladen werden: {ex.Message}", MessageOrigins.Series);
         }
         finally
         {
@@ -176,11 +178,12 @@ public sealed partial class LibraryPage : Page
             var authors = await App.Api.GetAuthorsAsync(_library!.Id);
             AuthorsGrid.ItemsSource = authors.Where(a => a.NumBooks > 0).Select(a => new AuthorViewModel(a)).ToList();
             _authorsLoaded = true;
+            App.MainWindow.ClearError(MessageOrigins.Authors);
             NoResults.Visibility = authors.Count == 0 && AuthorsGrid.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Autoren konnten nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Autoren konnten nicht geladen werden: {ex.Message}", MessageOrigins.Authors);
         }
         finally
         {
@@ -228,13 +231,14 @@ public sealed partial class LibraryPage : Page
             if (cts.IsCancellationRequested) return;
             BooksGrid.ItemsSource = new ObservableCollection<BookItemViewModel>(results.Select(r => new BookItemViewModel(r)));
             NoResults.Visibility = results.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            App.MainWindow.ClearError(MessageOrigins.Search);
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Suche fehlgeschlagen: {ex.Message}");
+            App.MainWindow.ShowError($"Suche fehlgeschlagen: {ex.Message}", MessageOrigins.Search);
         }
     }
 

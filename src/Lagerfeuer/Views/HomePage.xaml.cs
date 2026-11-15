@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Lagerfeuer.Services;
 using Lagerfeuer.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,10 +32,11 @@ public sealed partial class HomePage : Page
             _items.Clear();
             foreach (var item in items) _items.Add(new BookItemViewModel(item));
             EmptyState.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            App.MainWindow.ClearError(MessageOrigins.Home);
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"„Weiterhören“ konnte nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"„Weiterhören“ konnte nicht geladen werden: {ex.Message}", MessageOrigins.Home);
         }
         finally
         {

@@ -70,10 +70,11 @@ public sealed partial class PodcastPage : Page
             HideFinishedBox.IsChecked = App.Settings.HideFinishedEpisodes;
             ApplyFilter();
             ContentRoot.Visibility = Visibility.Visible;
+            App.MainWindow.ClearError(MessageOrigins.Podcast);
         }
         catch (Exception ex)
         {
-            App.MainWindow.ShowError($"Podcast konnte nicht geladen werden: {ex.Message}");
+            App.MainWindow.ShowError($"Podcast konnte nicht geladen werden: {ex.Message}", MessageOrigins.Podcast);
         }
         finally
         {
