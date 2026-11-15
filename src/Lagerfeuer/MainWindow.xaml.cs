@@ -478,13 +478,21 @@ public sealed partial class MainWindow : Window
     private static partial bool SetForegroundWindow(nint hwnd);
 
     /// <summary>Kurzer Hinweis, der sich nach einigen Sekunden selbst schließt.</summary>
-    public void ShowInfo(string message)
+    public void ShowInfo(string message, string? actionText = null, Action? action = null)
     {
         ErrorBar.Severity = InfoBarSeverity.Informational;
         ErrorBar.Message = message;
+        ErrorBar.ActionButton = null;
+        if (actionText is not null && action is not null)
+        {
+            var button = new Button { Content = actionText };
+            button.Click += (_, _) => { ErrorBar.IsOpen = false; action(); };
+            ErrorBar.ActionButton = button;
+        }
         ErrorBar.IsOpen = true;
         var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromSeconds(6);
+        // Mit Knopf bleibt mehr Zeit, ihn zu erreichen.
+        timer.Interval = TimeSpan.FromSeconds(action is null ? 6 : 10);
         timer.IsRepeating = false;
         timer.Tick += (_, _) => { if (ErrorBar.Message == message) ErrorBar.IsOpen = false; };
         timer.Start();
@@ -494,6 +502,7 @@ public sealed partial class MainWindow : Window
     {
         ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
+        ErrorBar.ActionButton = null;
         ErrorBar.IsOpen = true;
     }
 

@@ -49,6 +49,11 @@ public sealed partial class PlayerBar : UserControl
             PositionSlider.Value = Math.Min(Player.Position, Player.Duration);
             _updatingSlider = false;
         }
+        else if (e.PropertyName is nameof(PlayerService.ItemId) or nameof(PlayerService.HasSession))
+        {
+            // Lesezeichen gibt es nur bei Büchern (#39).
+            BookmarkButton.Visibility = BookmarkTitles.CanSet(Player.ItemId, Player.EpisodeId) ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void OnSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -75,7 +80,7 @@ public sealed partial class PlayerBar : UserControl
 
     private async void OnAddBookmark(object sender, RoutedEventArgs e)
     {
-        if (Player.ItemId is not { } itemId) return;
+        if (Player.ItemId is not { } itemId || !BookmarkTitles.CanSet(itemId, Player.EpisodeId)) return;
         if (App.IsOffline)
         {
             App.MainWindow.ShowError("Lesezeichen können nur mit Server-Verbindung gesetzt werden.");
@@ -86,13 +91,10 @@ public sealed partial class PlayerBar : UserControl
         try
         {
             var bookmark = await App.Api.CreateBookmarkAsync(itemId, time, title);
-            if (App.User is { } user)
-            {
-                user.Bookmarks.RemoveAll(b => b.LibraryItemId == bookmark.LibraryItemId && b.Time == bookmark.Time);
-                user.Bookmarks.Add(bookmark);
-            }
+            if (App.User is { } user) BookmarkTitles.Upsert(user.Bookmarks, bookmark);
             App.RaiseBookmarksChanged();
-            App.MainWindow.ShowInfo($"Lesezeichen gesetzt: {title} ({Format.Time(time)})");
+            App.MainWindow.ShowInfo($"Lesezeichen gesetzt: {title} ({Format.Time(time)})",
+                "Umbenennen", () => _ = Views.BookmarkRename.RunAsync(XamlRoot, bookmark));
         }
         catch (Exception ex)
         {

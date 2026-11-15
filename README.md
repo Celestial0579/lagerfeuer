@@ -50,7 +50,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Wiedergabe und Fortschritt pro Folge.
 - **Wiedergabe**
   - Streaming von Büchern mit mehreren Dateien, Kapitelnavigation, Geschwindigkeit von 0,75× bis 3×, Sleep-Timer (Minuten oder Kapitelende), Lautstärke.
-  - **Lesezeichen** mit einem Klick an der aktuellen Stelle.
+  - **Lesezeichen** mit einem Klick an der aktuellen Stelle, auf der Buchseite umbenennen und löschen (bei Podcast-Folgen gibt es keine Lesezeichen).
   - Tastatur: Leertaste, ← (10 s zurück), → (30 s vor).
   - Windows-Mediensteuerung und Medientasten mit Cover. Weiter/Zurück springt kapitelweise.
   - **Taskleisten-Miniplayer:** fünf Steuerknöpfe im Vorschaubild, Hörfortschritt im Taskleisten-Symbol.
@@ -187,7 +187,7 @@ Vorbereitet, braucht noch eine Entscheidung:
 
 Ideen für später:
 - Podcast-Folgen herunterladen (offline zunächst nur Bücher).
-- Lesezeichen umbenennen, Sammlungen und Playlists.
+- Sammlungen und Playlists.
 - Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
 
