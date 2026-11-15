@@ -79,6 +79,8 @@ public sealed partial class LibraryPage : Page
         _updatingControls = true;
         var podcast = IsPodcastLibrary;
         SeriesTab.Visibility = AuthorsTab.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible;
+        // Podcast-Bibliotheken haben nur eine Ansicht: keine Reiterleiste, auch kein einzelnes „Bücher“ (#43).
+        ViewSelector.Visibility = LibraryViews.ShowSelector(_library?.MediaType) ? Visibility.Visible : Visibility.Collapsed;
         FilterBox.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible; // Podcasts haben keinen Fortschrittsfilter
 
         var sorts = podcast ? PodcastSorts : BookSorts;
