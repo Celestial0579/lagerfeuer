@@ -102,6 +102,7 @@ public static class OpenIdLogin
                 $"Programm. Bitte in Audiobookshelf unter Einstellungen → Authentifizierung bei den erlaubten " +
                 $"Mobile-Redirect-URIs „{RedirectUri}“ eintragen.");
         var pending = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingState = state;
         _pending = pending;
         _lastAuthorizeUrl = authorizeUrl;
         Uri callback;
@@ -121,20 +122,23 @@ public static class OpenIdLogin
         }
         finally
         {
-            Interlocked.CompareExchange(ref _pending, null, pending);
+            if (Interlocked.CompareExchange(ref _pending, null, pending) == pending) _pendingState = null;
             _lastAuthorizeUrl = null;
         }
 
+        // Den state zuerst: Nur ein Rückruf zu genau dieser Anmeldung darf sie beenden, auch mit einem Fehler
+        // (GHSA-9cq7-jcr5-vp2c). OnCallback lässt fremde Rückrufe schon gar nicht durch; das hier ist die zweite Sicherung.
         var query = HttpUtility.ParseQueryString(callback.Query);
+        if (!StateMatches(query["state"], state))
+            throw new AbsApiException("SSO-Anmeldung fehlgeschlagen: state stimmt nicht überein.");
+
         var error = query["error"];
         if (!string.IsNullOrEmpty(error))
-            throw new AbsApiException($"SSO-Anmeldung fehlgeschlagen: {query["error_description"] ?? error}");
+            throw new AbsApiException($"SSO-Anmeldung fehlgeschlagen: {DescribeError(error)}");
 
         var code = query["code"];
         if (string.IsNullOrEmpty(code))
             throw new AbsApiException("SSO-Anmeldung fehlgeschlagen: kein Code erhalten.");
-        if (query["state"] != state)
-            throw new AbsApiException("SSO-Anmeldung fehlgeschlagen: state stimmt nicht überein.");
 
         // Schritt 4
         var exchangeUrl = api.Resolve(
@@ -156,7 +160,28 @@ public static class OpenIdLogin
     }
 
     private static TaskCompletionSource<Uri>? _pending;
+    private static string? _pendingState;
     private static Uri? _lastAuthorizeUrl;
+
+    /// <summary>Vergleicht den state in konstanter Zeit; fehlt einer von beiden, passt er nicht.</summary>
+    internal static bool StateMatches(string? received, string? expected)
+        => !string.IsNullOrEmpty(received) && !string.IsNullOrEmpty(expected)
+           && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+               Encoding.UTF8.GetBytes(received), Encoding.UTF8.GetBytes(expected));
+
+    /// <summary>
+    /// Text zum Fehlercode aus dem Rückruf. „error_description“ wird nie angezeigt: Den Rückruf kann jede Webseite
+    /// auslösen, der Text käme also von irgendwem. Bekannte OAuth-Codes bekommen einen deutschen Satz, andere
+    /// schlichte Codes erscheinen als Code, alles andere als allgemeiner Hinweis.
+    /// </summary>
+    internal static string DescribeError(string error) => error switch
+    {
+        "access_denied" => "Die Anmeldung wurde abgelehnt oder abgebrochen.",
+        "login_required" or "interaction_required" or "consent_required" => "Der Anbieter verlangt eine erneute Anmeldung.",
+        "server_error" or "temporarily_unavailable" => "Der Anmeldedienst hat einen Fehler gemeldet.",
+        _ when System.Text.RegularExpressions.Regex.IsMatch(error, @"\A[a-z_]{1,40}\z") => $"Fehlercode {error}.",
+        _ => "Der Anmeldedienst hat einen Fehler gemeldet.",
+    };
 
     /// <summary>Wartet gerade eine SSO-Anmeldung auf den Browser?</summary>
     public static bool IsWaiting => _pending is not null;
@@ -170,6 +195,13 @@ public static class OpenIdLogin
         if (pending is null)
         {
             Log.Info("SSO-Callback empfangen, aber keine Anmeldung aktiv – ignoriert.");
+            return false;
+        }
+        // Nur der Rückruf mit dem state dieser Anmeldung darf sie beenden. Einen fremden (etwa von einer Webseite,
+        // die lagerfeuer://oauth?error=… aufruft) übergeht Lagerfeuer und wartet weiter (GHSA-9cq7-jcr5-vp2c).
+        if (!StateMatches(HttpUtility.ParseQueryString(uri.Query)["state"], _pendingState))
+        {
+            Log.Info("SSO-Callback mit fremdem state – ignoriert.");
             return false;
         }
         return pending.TrySetResult(uri);

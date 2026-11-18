@@ -119,19 +119,62 @@ public class OpenIdLoginTests
         Assert.Single(handler.Requests);
     }
 
+    [Theory]
+    [InlineData("lagerfeuer://oauth?code=c1&state=fremd")]
+    [InlineData("lagerfeuer://oauth?code=c1")]
+    [InlineData("lagerfeuer://oauth?error=access_denied&error_description=Bitte%20rufe%20090012345%20an")]
+    [InlineData("lagerfeuer://oauth?error=access_denied&state=fremd")]
+    public async Task Rueckruf_OhnePassendenState_WirdUebergangen_AnmeldungLaeuftWeiter(string fremd)
+    {
+        // GHSA-9cq7-jcr5-vp2c: Eine Webseite ruft lagerfeuer://oauth auf, während die Anmeldung wartet.
+        var handler = ServerMit("lagerfeuer://oauth");
+        using var api = new AbsApiClient(new FakeHandler(_ => FakeHandler.Status(HttpStatusCode.NotFound)));
+
+        var login = await OpenIdLogin.LoginAsync(api, Server, handler,
+            _ =>
+            {
+                Assert.False(OpenIdLogin.OnCallback(fremd));
+                Assert.True(OpenIdLogin.IsWaiting);
+                Assert.True(OpenIdLogin.OnCallback($"lagerfeuer://oauth?code=c1&state={StateDerAnfrage(handler)}"));
+            },
+            TestContext.Current.CancellationToken, _ => true);
+
+        Assert.NotNull(login);
+        Assert.Equal("access-1", api.AccessToken);
+    }
+
     [Fact]
-    public async Task Rueckruf_FremderState_WirdAbgelehnt()
+    public async Task Rueckruf_FehlerMitPassendemState_ZeigtKeinenFremdenText()
     {
         var handler = ServerMit("lagerfeuer://oauth");
         using var api = new AbsApiClient(new FakeHandler(_ => FakeHandler.Status(HttpStatusCode.NotFound)));
 
         var ex = await Assert.ThrowsAsync<AbsApiException>(() => OpenIdLogin.LoginAsync(api, Server, handler,
-            _ => OpenIdLogin.OnCallback("audiobookshelf://oauth?code=c1&state=fremd"),
+            _ => Assert.True(OpenIdLogin.OnCallback(
+                $"lagerfeuer://oauth?error=access_denied&error_description=Bitte%20rufe%20090012345%20an&state={StateDerAnfrage(handler)}")),
             TestContext.Current.CancellationToken, _ => true));
 
-        Assert.Contains("state", ex.Message);
+        Assert.Contains("abgelehnt oder abgebrochen", ex.Message);
+        Assert.DoesNotContain("0900", ex.Message);
         Assert.DoesNotContain(handler.Requests, r => r.RequestUri!.AbsolutePath == "/auth/openid/callback");
     }
+
+    [Theory]
+    [InlineData("access_denied", "abgelehnt")]
+    [InlineData("invalid_request", "Fehlercode invalid_request")]
+    [InlineData("Bitte rufe 0900 an", "Anmeldedienst hat einen Fehler")]
+    [InlineData("<script>", "Anmeldedienst hat einen Fehler")]
+    public void Fehlercode_WirdNieWoertlichUebernommen(string error, string erwartet)
+        => Assert.Contains(erwartet, OpenIdLogin.DescribeError(error));
+
+    [Theory]
+    [InlineData("abc", "abc", true)]
+    [InlineData("abc", "abd", false)]
+    [InlineData(null, "abc", false)]
+    [InlineData("", "", false)]
+    [InlineData("abc", null, false)]
+    public void State_Vergleich(string? erhalten, string? erwartet, bool passt)
+        => Assert.Equal(passt, OpenIdLogin.StateMatches(erhalten, erwartet));
 
     [Theory]
     [InlineData("lagerfeuer://oauth?code=1&state=2", true)]
