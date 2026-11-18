@@ -18,15 +18,15 @@ public sealed class CacheManager(AbsApiClient api, string root)
 
     public string Root { get; } = root;
 
-    public string GetItemDirectory(string itemId) => Path.Combine(Root, Sanitize(itemId));
+    /// <summary>Ordner eines Buchs im Cache; die ID stammt vom Server und wird geprüft (siehe <see cref="CachePaths"/>).</summary>
+    public string GetItemDirectory(string itemId) => CachePaths.Within(Root, Path.Combine(Root, CachePaths.SafeId(itemId)));
 
     public string GetTrackPath(string itemId, AudioTrack track)
     {
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CacheKey(track.ContentUrl))))[..16];
-        var ext = track.Metadata?.Ext;
-        if (string.IsNullOrWhiteSpace(ext)) ext = ExtensionFromMime(track.MimeType);
-        if (!ext.StartsWith('.')) ext = "." + ext;
-        return Path.Combine(GetItemDirectory(itemId), $"{track.Index:D3}_{key}{ext.ToLowerInvariant()}");
+        var ext = CachePaths.SafeExtension(track.Metadata?.Ext, track.MimeType);
+        var index = Math.Clamp(track.Index, 0, 999);
+        return CachePaths.Within(Root, Path.Combine(GetItemDirectory(itemId), $"{index:D3}_{key}{ext}"));
     }
 
     public bool IsTrackComplete(string itemId, AudioTrack track)
@@ -196,23 +196,6 @@ public sealed class CacheManager(AbsApiClient api, string root)
         return i < 0 ? url : url[..i];
     }
 
-    private static string Sanitize(string s)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        return new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-    }
-
-    private static string ExtensionFromMime(string? mime) => mime?.ToLowerInvariant() switch
-    {
-        "audio/mpeg" or "audio/mp3" => ".mp3",
-        "audio/mp4" or "audio/x-m4a" or "audio/aac" => ".m4a",
-        "audio/x-m4b" => ".m4b",
-        "audio/flac" or "audio/x-flac" => ".flac",
-        "audio/ogg" or "audio/opus" => ".ogg",
-        "audio/wav" or "audio/x-wav" => ".wav",
-        "audio/webm" => ".webm",
-        _ => ".bin",
-    };
 }
 
 /// <summary>Lädt Cover und Autorenbilder einmalig herunter und hält sie auf der Platte vor.</summary>
@@ -221,20 +204,29 @@ public sealed class CoverCache(AbsApiClient api, string root)
     private readonly ConcurrentDictionary<string, Task<string?>> _inflight = new();
 
     public Task<string?> GetCoverPathAsync(string itemId)
-        => GetAsync(itemId, () => api.GetCoverAsync(itemId));
+        => GetAsync(CachePaths.SafeId(itemId), () => api.GetCoverAsync(itemId));
 
     public Task<string?> GetAuthorImagePathAsync(string authorId)
-        => GetAsync("author_" + authorId, () => api.GetAuthorImageAsync(authorId));
+        => GetAsync("author_" + CachePaths.SafeId(authorId), () => api.GetAuthorImageAsync(authorId));
 
     /// <summary>Verwirft ein Cover (z.B. wenn es am Server geändert wurde).</summary>
     public void Invalidate(string itemId)
     {
-        try { File.Delete(Path.Combine(root, itemId + ".jpg")); } catch { /* egal */ }
+        try { File.Delete(PathFor(CachePaths.SafeId(itemId))); } catch { /* egal */ }
     }
+
+    /// <summary>Pfad der Bilddatei; <paramref name="key"/> ist schon über <see cref="CachePaths.SafeId"/> gebildet.</summary>
+    private string PathFor(string key) => CachePaths.Within(root, Path.Combine(root, key + ".jpg"));
 
     private Task<string?> GetAsync(string key, Func<Task<byte[]?>> download)
     {
-        var path = Path.Combine(root, key + ".jpg");
+        string path;
+        try { path = PathFor(key); }
+        catch (InvalidOperationException ex)
+        {
+            Log.Error($"Bild {key} wird nicht gespeichert", ex);
+            return Task.FromResult<string?>(null);
+        }
         if (File.Exists(path)) return Task.FromResult<string?>(path);
         return _inflight.GetOrAdd(key, _ => DownloadAsync(key, path, download));
     }
