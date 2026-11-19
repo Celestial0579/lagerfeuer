@@ -50,6 +50,14 @@
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="{x:Bind Player.ChapterTitle, Mode=OneWay}"
                 TextTrimming="CharacterEllipsis" />
+            <StackPanel x:Name="QueuePanel" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE90B;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <TextBlock
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Player.QueueText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
         </StackPanel>
 
         <!--  Steuerung + Zeitleiste  -->
@@ -81,6 +89,16 @@
                     <FontIcon Glyph="&#xED3D;" />
                 </Button>
                 <Button Click="OnNextChapter" Style="{StaticResource PlayerButton}" ToolTipService.ToolTip="Nächstes Kapitel">
+                    <FontIcon Glyph="&#xE893;" />
+                </Button>
+                <Button
+                    x:Name="NextInQueueButton"
+                    AutomationProperties.Name="Nächster Titel der Wiedergabeliste"
+                    Click="OnNextInQueue"
+                    IsEnabled="{x:Bind Player.HasNextInQueue, Mode=OneWay}"
+                    Style="{StaticResource PlayerButton}"
+                    ToolTipService.ToolTip="Nächster Titel der Wiedergabeliste"
+                    Visibility="Collapsed">
                     <FontIcon Glyph="&#xE893;" />
                 </Button>
             </StackPanel>

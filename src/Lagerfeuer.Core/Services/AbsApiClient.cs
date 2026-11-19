@@ -286,6 +286,61 @@ public sealed class AbsApiClient : IDisposable
         return await resp.Content.ReadAsByteArrayAsync(cts.Token);
     }
 
+    // ---------- Wiedergabelisten (#36) ----------
+
+    /// <summary>
+    /// ID für einen Pfadabschnitt: nur schlichte IDs, zusätzlich maskiert. Eine ID vom Server mit „/“ oder „..“
+    /// könnte sonst einen anderen Aufruf treffen.
+    /// </summary>
+    internal static string Seg(string? id)
+        => PlaylistRules.IsPlainId(id) ? Uri.EscapeDataString(id!) : throw new AbsApiException("Ungültige Kennung vom Server.");
+
+    /// <summary>Eigene Wiedergabelisten einer Bibliothek (andere Nutzer sieht man nicht).</summary>
+    public async Task<List<Playlist>> GetPlaylistsAsync(string libraryId, CancellationToken ct = default)
+        => (await SendJsonAsync<PlaylistsResponse>(HttpMethod.Get, $"api/libraries/{Seg(libraryId)}/playlists", null, ct)).Results;
+
+    public Task<Playlist> GetPlaylistAsync(string playlistId, CancellationToken ct = default)
+        => SendJsonAsync<Playlist>(HttpMethod.Get, $"api/playlists/{Seg(playlistId)}", null, ct);
+
+    public Task<Playlist> CreatePlaylistAsync(string libraryId, string name, string itemId, string? episodeId,
+        CancellationToken ct = default)
+    {
+        Seg(libraryId); Seg(itemId); if (episodeId is not null) Seg(episodeId);
+        return SendJsonAsync<Playlist>(HttpMethod.Post, "api/playlists",
+            new { libraryId, name, items = PlaylistRules.OrderBody([new PlaylistItem { LibraryItemId = itemId, EpisodeId = episodeId }]) }, ct);
+    }
+
+    public Task<Playlist> RenamePlaylistAsync(string playlistId, string name, CancellationToken ct = default)
+        => SendJsonAsync<Playlist>(HttpMethod.Patch, $"api/playlists/{Seg(playlistId)}", new { name }, ct);
+
+    /// <summary>Neue Reihenfolge: der Server übernimmt die Einträge genau in dieser Folge.</summary>
+    public Task<Playlist> ReorderPlaylistAsync(string playlistId, IEnumerable<PlaylistItem> items, CancellationToken ct = default)
+    {
+        var list = items.ToList();
+        foreach (var i in list) { Seg(i.LibraryItemId); if (i.EpisodeId is not null) Seg(i.EpisodeId); }
+        return SendJsonAsync<Playlist>(HttpMethod.Patch, $"api/playlists/{Seg(playlistId)}", new { items = PlaylistRules.OrderBody(list) }, ct);
+    }
+
+    public Task DeletePlaylistAsync(string playlistId, CancellationToken ct = default)
+        => SendNoContentAsync(HttpMethod.Delete, $"api/playlists/{Seg(playlistId)}", null, ct);
+
+    public Task<Playlist> AddToPlaylistAsync(string playlistId, string itemId, string? episodeId, CancellationToken ct = default)
+    {
+        var path = $"api/playlists/{Seg(playlistId)}/item";
+        Seg(itemId);
+        if (episodeId is not null) Seg(episodeId);
+        var body = PlaylistRules.OrderBody([new PlaylistItem { LibraryItemId = itemId, EpisodeId = episodeId }])[0];
+        return SendJsonAsync<Playlist>(HttpMethod.Post, path, body, ct);
+    }
+
+    /// <summary>
+    /// Entfernt einen Eintrag. Achtung: Audiobookshelf löscht die Liste selbst, wenn der letzte Eintrag
+    /// geht, und antwortet dann mit der leeren Liste.
+    /// </summary>
+    public Task<Playlist> RemoveFromPlaylistAsync(string playlistId, string itemId, string? episodeId, CancellationToken ct = default)
+        => SendJsonAsync<Playlist>(HttpMethod.Delete,
+            $"api/playlists/{Seg(playlistId)}/item/{Seg(itemId)}{(episodeId is null ? "" : "/" + Seg(episodeId))}", null, ct);
+
     // ---------- Lesezeichen ----------
 
     public async Task<List<Bookmark>> GetBookmarksAsync(string itemId, CancellationToken ct = default)

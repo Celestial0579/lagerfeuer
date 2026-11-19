@@ -61,6 +61,12 @@
                                     <TextBlock x:Name="FinishedButtonText" Text="Als beendet markieren" />
                                 </StackPanel>
                             </Button>
+                            <Button x:Name="PlaylistButton" Click="OnAddToPlaylist">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontSize="14" Glyph="&#xE90B;" />
+                                    <TextBlock Text="Zur Wiedergabeliste" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <ProgressBar
                             x:Name="DownloadProgress"

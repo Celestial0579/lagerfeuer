@@ -46,6 +46,10 @@ public sealed partial class PlayerService : ObservableObject
     private int _loadGeneration;
     private DateTime? _sleepAt;
     private bool _sleepAtChapterEnd;
+    // Abgleich je Session getrennt halten (#36, vgl. audiobookshelf-app#1491); null bei Offline-Wiedergabe.
+    private readonly SessionSyncGuard _guard = new();
+    private SessionTicket? _ticket;
+    private PlaylistQueue? _queue;
 
     public PlayerService(AbsApiClient api, CacheManager cache, CoverCache covers, AppSettings settings,
         LocalSessionStore localSessions, ProgressStore progress, DispatcherQueue dq)
@@ -104,6 +108,9 @@ public sealed partial class PlayerService : ObservableObject
     [ObservableProperty] public partial string? ErrorMessage { get; set; }
     /// <summary>Läuft die aktuelle Wiedergabe ohne Server (heruntergeladenes Buch)?</summary>
     [ObservableProperty] public partial bool IsOfflineSession { get; set; }
+    /// <summary>Läuft eine Wiedergabeliste? Dann z.B. „Liste · 2 von 5“, sonst null.</summary>
+    [ObservableProperty] public partial string? QueueText { get; set; }
+    [ObservableProperty] public partial bool HasNextInQueue { get; set; }
 
     /// <summary>App ist offline: heruntergeladene Bücher direkt lokal abspielen, ohne Server-Versuch.</summary>
     public bool PreferOffline { get; set; }
@@ -115,6 +122,9 @@ public sealed partial class PlayerService : ObservableObject
 
     /// <summary>Id der laufenden Server-Session (um eigene Live-Sync-Meldungen zu erkennen).</summary>
     public string? SessionId => _session?.Id;
+
+    /// <summary>Stammt eine Live-Meldung von einer Session dieses Geräts, auch einer schon geschlossenen?</summary>
+    public bool IsOwnSession(string? sessionId) => _guard.IsOwnSession(sessionId);
 
     /// <summary>Folgen-Id bei Podcasts (sonst null).</summary>
     public string? EpisodeId => _session?.EpisodeId;
@@ -137,8 +147,54 @@ public sealed partial class PlayerService : ObservableObject
 
     // ---------- Steuerung ----------
 
-    /// <summary>Spielt ein Buch bzw. (mit episodeId) eine Podcast-Folge.</summary>
-    public async Task PlayItemAsync(string itemId, double? startAt = null, string? episodeId = null)
+    /// <summary>Spielt ein Buch bzw. (mit episodeId) eine Podcast-Folge. Eine laufende Wiedergabeliste endet damit.</summary>
+    public Task PlayItemAsync(string itemId, double? startAt = null, string? episodeId = null)
+    {
+        if (_queue is not null && !_queue.IsCurrent(itemId, episodeId)) SetQueue(null);
+        return PlayItemCoreAsync(itemId, startAt, episodeId);
+    }
+
+    /// <summary>
+    /// Spielt eine Wiedergabeliste ab dem Eintrag <paramref name="startIndex"/>. Nach dem Ende eines Titels
+    /// startet der nächste. Ausgelöst wird das nur von Hand, nie durch eine Meldung des Servers.
+    /// </summary>
+    public async Task PlayPlaylistAsync(Playlist playlist, int startIndex = 0)
+    {
+        var queue = new PlaylistQueue(playlist, startIndex);
+        if (queue.Current is not { } first)
+        {
+            ErrorMessage = "In dieser Wiedergabeliste gibt es nichts, das sich abspielen lässt.";
+            return;
+        }
+        SetQueue(queue);
+        await PlayItemCoreAsync(first.LibraryItemId, null, first.EpisodeId);
+    }
+
+    /// <summary>Springt in der laufenden Wiedergabeliste zum nächsten Titel.</summary>
+    public async Task PlayNextInQueueAsync()
+    {
+        if (_queue?.MoveNext() is not { } next)
+        {
+            SetQueue(null);
+            return;
+        }
+        UpdateQueueState();
+        await PlayItemCoreAsync(next.LibraryItemId, null, next.EpisodeId);
+    }
+
+    private void SetQueue(PlaylistQueue? queue)
+    {
+        _queue = queue;
+        UpdateQueueState();
+    }
+
+    private void UpdateQueueState()
+    {
+        QueueText = _queue?.Describe();
+        HasNextInQueue = _queue?.HasNext == true;
+    }
+
+    private async Task PlayItemCoreAsync(string itemId, double? startAt, string? episodeId)
     {
         if (_session is not null && _session.LibraryItemId == itemId && _session.EpisodeId == episodeId)
         {
@@ -147,7 +203,7 @@ public sealed partial class PlayerService : ObservableObject
             return;
         }
 
-        await StopAsync();
+        await StopCoreAsync();
         IsLoading = true;
         ErrorMessage = null;
         try
@@ -169,6 +225,8 @@ public sealed partial class PlayerService : ObservableObject
             Title = session.DisplayTitle ?? "";
             Author = session.DisplayAuthor ?? "";
             Duration = session.Duration > 0 ? session.Duration : session.AudioTracks.Sum(t => t.Duration);
+            // Die vorige Session ist hier schon geschlossen (StopAsync oben). Erst jetzt beginnt die neue.
+            _ticket = _localSession is null ? _guard.Begin(session.Id, itemId, episodeId, Duration) : null;
             OnPropertyChanged(nameof(Chapters));
             HasSession = true;
 
@@ -196,7 +254,7 @@ public sealed partial class PlayerService : ObservableObject
                        "Heruntergeladene Bücher kannst du weiter hören.",
                 _ => ex.Message,
             };
-            await StopAsync();
+            await StopCoreAsync();
         }
         finally
         {
@@ -352,8 +410,14 @@ public sealed partial class PlayerService : ObservableObject
         UpdateSleepText();
     }
 
-    /// <summary>Beendet die aktuelle Session und meldet den finalen Fortschritt an den Server.</summary>
-    public async Task StopAsync()
+    /// <summary>Beendet die aktuelle Session (und eine laufende Wiedergabeliste) und meldet den finalen Fortschritt.</summary>
+    public Task StopAsync()
+    {
+        SetQueue(null);
+        return StopCoreAsync();
+    }
+
+    private async Task StopCoreAsync()
     {
         _loadGeneration++;
         _tick.Stop();
@@ -367,22 +431,27 @@ public sealed partial class PlayerService : ObservableObject
             _localSession = null;
             LocalSessionEnded?.Invoke(this, EventArgs.Empty);
         }
-        else if (session is not null)
+        else if (session is not null && _ticket is { } ticket)
         {
-            var current = CurrentBookTime();
-            var listened = TakeListenedSeconds();
-            try
+            // Wartet auf einen laufenden Abgleich; danach geht nur noch der letzte Stand an den Server.
+            await _guard.EndAsync(ticket, async t =>
             {
-                await _api.CloseSessionAsync(session.Id, current, listened, Duration);
-                ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
-            }
-            catch (Exception ex)
-            {
-                Log.Error("Session konnte nicht geschlossen werden", ex);
-                try { await _api.UpdateProgressAsync(session.LibraryItemId, current, Duration, false, session.EpisodeId); }
-                catch (Exception ex2) { Log.Error("Fortschritt konnte nicht gespeichert werden", ex2); }
-            }
+                var current = CurrentBookTime();
+                var listened = TakeListenedSeconds(t);
+                try
+                {
+                    await _api.CloseSessionAsync(t.SessionId, current, listened, t.Duration);
+                    ProgressSynced?.Invoke(this, (t.ItemId, t.EpisodeId, current, t.Duration));
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Session konnte nicht geschlossen werden", ex);
+                    try { await _api.UpdateProgressAsync(t.ItemId, current, t.Duration, false, t.EpisodeId); }
+                    catch (Exception ex2) { Log.Error("Fortschritt konnte nicht gespeichert werden", ex2); }
+                }
+            });
         }
+        _ticket = null;
 
         _player.Source = null;
         DisposeStreams();
@@ -416,7 +485,7 @@ public sealed partial class PlayerService : ObservableObject
     private async Task ShutdownCoreAsync()
     {
         _settings.Save();
-        await Task.WhenAny(StopAsync(), Task.Delay(TimeSpan.FromSeconds(4)));
+        await Task.WhenAny(StopCoreAsync(), Task.Delay(TimeSpan.FromSeconds(4)));
         _player.Dispose();
     }
 
@@ -592,28 +661,40 @@ public sealed partial class PlayerService : ObservableObject
 
     private async Task OnMediaEndedAsync()
     {
-        if (_session is null) return;
+        var session = _session;
+        if (session is null) return;
         var next = _trackIndex + 1;
-        if (next < _session.AudioTracks.Count)
+        if (next < session.AudioTracks.Count)
         {
-            await LoadTrackAtAsync(_session.AudioTracks[next].StartOffset, play: true);
+            await LoadTrackAtAsync(session.AudioTracks[next].StartOffset, play: true);
             return;
         }
 
-        // Buch zu Ende
+        // Buch zu Ende. Alles Weitere gilt nur für genau diese Session: Wurde inzwischen etwas anderes
+        // gestartet, wird weder der neue Titel als beendet markiert noch weitergesprungen.
+        var ticket = _ticket;
         Position = Duration;
         IsPlaying = false;
         await SyncAsync(force: true);
-        if (_localSession is not null) return; // Offline: "beendet" ergibt sich beim Hochladen aus der Position
-        try
+        if (_session != session) return;
+        if (ticket is not null) // Offline: "beendet" ergibt sich beim Hochladen aus der Position
         {
-            await _api.UpdateProgressAsync(_session.LibraryItemId, Duration, Duration, isFinished: true, episodeId: _session.EpisodeId);
-            ProgressSynced?.Invoke(this, (_session.LibraryItemId, _session.EpisodeId, Duration, Duration));
+            await _guard.SyncAsync(ticket, async t =>
+            {
+                try
+                {
+                    await _api.UpdateProgressAsync(t.ItemId, t.Duration, t.Duration, isFinished: true, episodeId: t.EpisodeId);
+                    ProgressSynced?.Invoke(this, (t.ItemId, t.EpisodeId, t.Duration, t.Duration));
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Konnte Buch nicht als beendet markieren", ex);
+                }
+            });
         }
-        catch (Exception ex)
-        {
-            Log.Error("Konnte Buch nicht als beendet markieren", ex);
-        }
+
+        if (_session == session && _queue is { } queue && queue.IsCurrent(session.LibraryItemId, session.EpisodeId))
+            await PlayNextInQueueAsync(); // schließt die Session dieses Titels, bevor der nächste beginnt
     }
 
     private void OnMediaFailed(MediaPlayerFailedEventArgs e)
@@ -709,10 +790,10 @@ public sealed partial class PlayerService : ObservableObject
 
     // ---------- Fortschritts-Sync ----------
 
-    private double TakeListenedSeconds()
+    private double TakeListenedSeconds(SessionTicket? ticket = null)
     {
-        var seconds = _listenWatch.Elapsed.TotalSeconds + _carryOverListened;
-        _carryOverListened = 0;
+        var seconds = _listenWatch.Elapsed.TotalSeconds + (ticket?.CarryOverListened ?? 0);
+        if (ticket is not null) ticket.CarryOverListened = 0;
         _listenWatch.Restart();
         if (!IsPlaying) _listenWatch.Stop();
         return Math.Round(seconds, 1);
@@ -726,44 +807,16 @@ public sealed partial class PlayerService : ObservableObject
 
         _syncInFlight = true;
         _sinceSync.Restart();
-        var listened = TakeListenedSeconds();
-        var current = CurrentBookTime();
-        if (_localSession is { } local)
-        {
-            RecordLocal(local, current, listened);
-            _syncInFlight = false;
-            return;
-        }
         try
         {
-            await _api.SyncSessionAsync(session.Id, current, listened, Duration);
-            ProgressSynced?.Invoke(this, (session.LibraryItemId, session.EpisodeId, current, Duration));
-        }
-        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound && !ex.ServerUnreachable)
-        {
-            // Session ist am Server nicht mehr offen (Neustart oder > 36 h inaktiv) → neue Session,
-            // Wiedergabe läuft lokal ungestört weiter. Tracks/URLs bleiben identisch.
-            Log.Info($"Session {session.Id} am Server geschlossen – starte neue Session.");
-            try
+            if (_localSession is { } local)
             {
-                var fresh = await _api.StartPlaybackAsync(session.LibraryItemId, _settings.DeviceId, session.EpisodeId);
-                if (_session == session)
-                {
-                    session.Id = fresh.Id;
-                    await _api.SyncSessionAsync(session.Id, current, listened, Duration);
-                }
+                RecordLocal(local, CurrentBookTime(), TakeListenedSeconds());
+                return;
             }
-            catch (Exception ex2)
-            {
-                Log.Error("Neue Session konnte nicht gestartet werden", ex2);
-                _carryOverListened += listened;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Fortschritts-Sync fehlgeschlagen", ex);
-            // Gehörte Zeit nicht verlieren: beim nächsten Sync mitschicken.
-            _carryOverListened += listened;
+            if (_ticket is not { } ticket) return;
+            // Stand und gehörte Zeit erst nehmen, wenn der Abgleich dran ist – und nur, solange die Session gilt.
+            await _guard.SyncAsync(ticket, t => SendSyncAsync(session, t));
         }
         finally
         {
@@ -771,7 +824,41 @@ public sealed partial class PlayerService : ObservableObject
         }
     }
 
-    private double _carryOverListened;
+    private async Task SendSyncAsync(PlaybackSession session, SessionTicket t)
+    {
+        var listened = TakeListenedSeconds(t);
+        var current = CurrentBookTime();
+        try
+        {
+            await _api.SyncSessionAsync(t.SessionId, current, listened, t.Duration);
+            ProgressSynced?.Invoke(this, (t.ItemId, t.EpisodeId, current, t.Duration));
+        }
+        catch (AbsApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound && !ex.ServerUnreachable)
+        {
+            // Session ist am Server nicht mehr offen (Neustart oder > 36 h inaktiv) → neue Session,
+            // Wiedergabe läuft lokal ungestört weiter. Tracks/URLs bleiben identisch. Hier läuft noch die
+            // alte Session (der Guard lässt kein Schließen dazwischen), also gehört die neue zum selben Titel.
+            Log.Info($"Session {t.SessionId} am Server geschlossen – starte neue Session.");
+            try
+            {
+                var fresh = await _api.StartPlaybackAsync(t.ItemId, _settings.DeviceId, t.EpisodeId);
+                t.SessionId = session.Id = fresh.Id;
+                _guard.RememberOwn(fresh.Id);
+                await _api.SyncSessionAsync(t.SessionId, current, listened, t.Duration);
+            }
+            catch (Exception ex2)
+            {
+                Log.Error("Neue Session konnte nicht gestartet werden", ex2);
+                t.CarryOverListened += listened;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Fortschritts-Sync fehlgeschlagen", ex);
+            // Gehörte Zeit nicht verlieren: beim nächsten Sync dieser Session mitschicken.
+            t.CarryOverListened += listened;
+        }
+    }
 
     /// <summary>Fortschritt einer Offline-Session lokal festhalten (wird später hochgeladen).</summary>
     private void RecordLocal(LocalSession local, double current, double listened)

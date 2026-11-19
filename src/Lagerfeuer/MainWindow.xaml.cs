@@ -260,6 +260,7 @@ public sealed partial class MainWindow : Window
         Nav.Visibility = Visibility.Visible;
         foreach (var item in _libraryItems) item.IsEnabled = false;
         ((NavigationViewItem)Nav.MenuItems[0]).IsEnabled = false;
+        PlaylistsItem.IsEnabled = false; // Wiedergabelisten liegen nur auf dem Server
 
         Nav.SelectedItem = DownloadsItem;
         ContentFrame.BackStack.Clear();
@@ -315,6 +316,7 @@ public sealed partial class MainWindow : Window
         OfflineBar.IsOpen = false;
         _reconnectTimer?.Stop();
         ((NavigationViewItem)Nav.MenuItems[0]).IsEnabled = true;
+        PlaylistsItem.IsEnabled = true;
     }
 
     public void RetryStart() => _ = StartAsync();
@@ -348,6 +350,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        App.Libraries = libraries.Where(l => l.MediaType is "book" or "podcast").ToList();
         foreach (var old in _libraryItems) Nav.MenuItems.Remove(old);
         _libraryItems.Clear();
         foreach (var lib in libraries.Where(l => l.MediaType is "book" or "podcast"))
@@ -418,6 +421,9 @@ public sealed partial class MainWindow : Window
             case "downloads":
                 ContentFrame.Navigate(typeof(DownloadsPage), null, args.RecommendedNavigationTransitionInfo);
                 break;
+            case "playlists":
+                ContentFrame.Navigate(typeof(PlaylistsPage), null, args.RecommendedNavigationTransitionInfo);
+                break;
             case "logout":
                 _ = LogoutAsync();
                 break;
@@ -436,6 +442,8 @@ public sealed partial class MainWindow : Window
         if (item.IsPodcast) ContentFrame.Navigate(typeof(PodcastPage), item.Id);
         else OpenItem(item.Id);
     }
+
+    public void OpenPlaylist(string playlistId) => ContentFrame.Navigate(typeof(PlaylistPage), playlistId);
 
     public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
 
@@ -457,6 +465,7 @@ public sealed partial class MainWindow : Window
             var t when t == typeof(HomePage) => Nav.MenuItems[0],
             var t when t == typeof(SettingsPage) => SettingsItem,
             var t when t == typeof(DownloadsPage) => DownloadsItem,
+            var t when t == typeof(PlaylistsPage) || t == typeof(PlaylistPage) => PlaylistsItem,
             var t when t == typeof(LibraryPage) => _libraryItems.FirstOrDefault(i => ReferenceEquals(i.Tag, e.Parameter)),
             _ => Nav.SelectedItem,
         };

@@ -40,6 +40,12 @@ public sealed class LiveSyncClient : IAsyncDisposable
     /// <summary>user_updated: kompletter Benutzer inkl. Fortschritt und Lesezeichen (Hintergrund-Thread).</summary>
     public event EventHandler<AbsUser>? UserUpdated;
 
+    /// <summary>
+    /// playlist_added/_updated/_removed (Hintergrund-Thread). Nur ein Hinweis zum Neuladen: Der Empfänger
+    /// prüft Nutzer und Bibliothek und startet nie eine Wiedergabe deswegen.
+    /// </summary>
+    public event EventHandler<PlaylistChange>? PlaylistChanged;
+
     public event EventHandler<bool>? ConnectionChanged;
 
     public void Start() => _loop ??= Task.Run(RunAsync);
@@ -116,6 +122,10 @@ public sealed class LiveSyncClient : IAsyncDisposable
                     break;
                 case { Name: "user_item_progress_updated" } e when SocketIoProtocol.TryParseProgress(e.Payload) is { } p:
                     ProgressUpdated?.Invoke(this, p);
+                    break;
+                case { Name: "playlist_added" or "playlist_updated" or "playlist_removed" } e
+                    when SocketIoProtocol.TryParsePlaylistChange(e.Name, e.Payload) is { } change:
+                    PlaylistChanged?.Invoke(this, change);
                     break;
                 case { Name: "user_updated" } e:
                     var user = e.Payload.Deserialize<AbsUser>(AbsApiClient.Json);
@@ -237,6 +247,28 @@ public sealed class SocketIoProtocol(Func<string?> token)
             default:
                 return Nothing;
         }
+    }
+
+    /// <summary>
+    /// Payload von playlist_*: die Wiedergabeliste selbst. Übernommen werden nur ID, Bibliothek und Besitzer,
+    /// und nur schlichte IDs. Den Inhalt lädt der Empfänger bei Bedarf selbst neu.
+    /// </summary>
+    public static PlaylistChange? TryParsePlaylistChange(string name, JsonElement payload)
+    {
+        var kind = name switch
+        {
+            "playlist_added" => PlaylistChangeKind.Added,
+            "playlist_updated" => PlaylistChangeKind.Updated,
+            "playlist_removed" => PlaylistChangeKind.Removed,
+            _ => (PlaylistChangeKind?)null,
+        };
+        if (kind is null || payload.ValueKind != JsonValueKind.Object) return null;
+        static string? Str(JsonElement o, string p) => o.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var id = Str(payload, "id");
+        var libraryId = Str(payload, "libraryId");
+        var userId = Str(payload, "userId");
+        if (!PlaylistRules.IsPlainId(id) || !PlaylistRules.IsPlainId(libraryId) || !PlaylistRules.IsPlainId(userId)) return null;
+        return new PlaylistChange(kind.Value, id!, libraryId!, userId!);
     }
 
     /// <summary>Payload von user_item_progress_updated: { id, sessionId, deviceDescription, data: MediaProgress }.</summary>
