@@ -42,4 +42,6 @@ public static class MessageOrigins
     public const string AuthorPage = "author-page";
     public const string Book = "book";
     public const string Podcast = "podcast";
+    public const string Playlists = "playlists";
+    public const string Playlist = "playlist";
 }

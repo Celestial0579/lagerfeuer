@@ -22,6 +22,17 @@ public partial class App : Application
 
     public static void RaiseBookmarksChanged() => BookmarksChanged?.Invoke(null, EventArgs.Empty);
 
+    /// <summary>Bibliotheken des angemeldeten Nutzers (Bücher und Podcasts), nach dem Anmelden gesetzt.</summary>
+    public static IReadOnlyList<Models.Library> Libraries { get; set; } = [];
+
+    /// <summary>
+    /// Eine eigene Wiedergabeliste wurde (auch auf einem anderen Gerät) angelegt, geändert oder gelöscht.
+    /// Im Thread der Oberfläche. Nur ein Anlass zum Neuladen, nie zum Abspielen.
+    /// </summary>
+    public static event EventHandler<PlaylistChange>? PlaylistChanged;
+
+    public static void RaisePlaylistChanged(PlaylistChange change) => PlaylistChanged?.Invoke(null, change);
+
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
     public static bool IsOffline { get; set; }
 
@@ -89,6 +100,11 @@ public partial class App : Application
         Player.AttachCallDetector(Calls);
         if (Settings.PauseOnCalls) _ = Calls.StartAsync();
         LiveSync.ProgressUpdated += (_, p) => dispatcher.TryEnqueue(() => OnRemoteProgress(p));
+        LiveSync.PlaylistChanged += (_, c) => dispatcher.TryEnqueue(() =>
+        {
+            // Nur Listen des angemeldeten Nutzers in einer seiner Bibliotheken.
+            if (Libraries.Any(l => PlaylistRules.Applies(c, User?.Id, l.Id))) RaisePlaylistChanged(c);
+        });
         // Der Server ist (wieder) da: offline gehörte Zeit gleich nachmelden, nicht erst beim nächsten Start.
         LiveSync.ConnectionChanged += (_, connected) =>
         {
@@ -113,7 +129,7 @@ public partial class App : Application
     /// </summary>
     private static void OnRemoteProgress(RemoteProgress remote)
     {
-        if (remote.SessionId is not null && remote.SessionId == Player.SessionId) return; // eigene Meldung
+        if (Player.IsOwnSession(remote.SessionId)) return; // eigene Meldung, auch verspätet von einer schon geschlossenen Session
         var p = remote.Progress;
         Progress.Set(p);
 

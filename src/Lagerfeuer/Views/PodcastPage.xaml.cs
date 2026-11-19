@@ -39,6 +39,7 @@ public sealed partial class EpisodeViewModel(string itemId, PodcastEpisode episo
 public sealed partial class PodcastPage : Page
 {
     private string? _itemId;
+    private string? _libraryId;
     private List<EpisodeViewModel> _episodes = [];
 
     public PodcastPage()
@@ -55,6 +56,7 @@ public sealed partial class PodcastPage : Page
         try
         {
             var item = await App.Api.GetItemAsync(itemId);
+            _libraryId = item.LibraryId;
             var meta = item.Media.Metadata;
             Cover.ItemId = item.Id;
             TitleText.Text = meta.Title ?? "";
@@ -115,5 +117,11 @@ public sealed partial class PodcastPage : Page
     {
         if (_itemId is not null && ((FrameworkElement)sender).Tag is string episodeId)
             _ = App.Player.PlayItemAsync(_itemId, episodeId: episodeId);
+    }
+
+    private void OnAddToPlaylist(object sender, RoutedEventArgs e)
+    {
+        if (_itemId is not { } itemId || _libraryId is not { } libraryId || ((FrameworkElement)sender).Tag is not string episodeId) return;
+        PlaylistUi.CreateAddFlyout(() => (libraryId, itemId, episodeId), XamlRoot).ShowAt((FrameworkElement)sender);
     }
 }

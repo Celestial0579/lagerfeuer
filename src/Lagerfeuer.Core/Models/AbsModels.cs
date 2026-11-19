@@ -495,3 +495,35 @@ public sealed class AuthSessionsResponse
     public int Total { get; set; }
     public List<AuthSession> Sessions { get; set; } = [];
 }
+
+/// <summary>
+/// Wiedergabeliste aus GET /api/playlists/:id bzw. /api/libraries/:id/playlists (#36). Sie gehört einem
+/// einzelnen Nutzer. Alle Angaben kommen vom Server und werden nur als schlichter Text angezeigt.
+/// </summary>
+public sealed class Playlist
+{
+    public string Id { get; set; } = "";
+    public string LibraryId { get; set; } = "";
+    public string? UserId { get; set; }
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public List<PlaylistItem> Items { get; set; } = [];
+    public long LastUpdate { get; set; }
+    public long CreatedAt { get; set; }
+}
+
+/// <summary>Eintrag einer Wiedergabeliste: ein Buch oder (mit EpisodeId) eine Podcast-Folge.</summary>
+public sealed class PlaylistItem
+{
+    public string LibraryItemId { get; set; } = "";
+    public string? EpisodeId { get; set; }
+    /// <summary>Vom Server mitgeliefert (bei Folgen gekürzt); fehlt, wenn das Buch gelöscht wurde.</summary>
+    public LibraryItem? LibraryItem { get; set; }
+    public PodcastEpisode? Episode { get; set; }
+}
+
+public sealed class PlaylistsResponse
+{
+    public List<Playlist> Results { get; set; } = [];
+    public int Total { get; set; }
+}

@@ -49,6 +49,11 @@ public sealed partial class PlayerBar : UserControl
             PositionSlider.Value = Math.Min(Player.Position, Player.Duration);
             _updatingSlider = false;
         }
+        else if (e.PropertyName is nameof(PlayerService.QueueText))
+        {
+            var visible = Player.QueueText is not null ? Visibility.Visible : Visibility.Collapsed;
+            QueuePanel.Visibility = NextInQueueButton.Visibility = visible;
+        }
         else if (e.PropertyName is nameof(PlayerService.ItemId) or nameof(PlayerService.HasSession))
         {
             // Lesezeichen gibt es nur bei Büchern (#39).
@@ -76,6 +81,8 @@ public sealed partial class PlayerBar : UserControl
     private void OnPreviousChapter(object sender, RoutedEventArgs e) => Player.PreviousChapter();
     private void OnNextChapter(object sender, RoutedEventArgs e) => Player.NextChapter();
     private void OnStop(object sender, RoutedEventArgs e) => _ = Player.StopAsync();
+
+    private void OnNextInQueue(object sender, RoutedEventArgs e) => _ = Player.PlayNextInQueueAsync();
     private void OnMiniPlayer(object sender, RoutedEventArgs e) => App.MainWindow.ShowMiniPlayer();
 
     private async void OnAddBookmark(object sender, RoutedEventArgs e)

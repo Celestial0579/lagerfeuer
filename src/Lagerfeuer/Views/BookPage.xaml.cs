@@ -282,4 +282,10 @@ public sealed partial class BookPage : Page
             App.MainWindow.ShowError($"Fortschritt konnte nicht gespeichert werden: {ex.Message}");
         }
     }
+
+    private void OnAddToPlaylist(object sender, RoutedEventArgs e)
+    {
+        if (_item is not { } item) return;
+        PlaylistUi.CreateAddFlyout(() => (item.LibraryId, item.Id, null), XamlRoot).ShowAt((FrameworkElement)sender);
+    }
 }
