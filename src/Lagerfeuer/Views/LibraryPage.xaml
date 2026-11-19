@@ -40,6 +40,7 @@
                 <SelectorBarItem x:Name="BooksTab" IsSelected="True" Tag="books" Text="Bücher" />
                 <SelectorBarItem x:Name="SeriesTab" Tag="series" Text="Serien" />
                 <SelectorBarItem x:Name="AuthorsTab" Tag="authors" Text="Autoren" />
+                <SelectorBarItem x:Name="CollectionsTab" Tag="collections" Text="Sammlungen" />
             </SelectorBar>
             <StackPanel
                 x:Name="SortPanel"
@@ -138,6 +139,30 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind Info}" />
+                    </StackPanel>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <!--  Sammlungen (#35)  -->
+        <GridView
+            x:Name="CollectionsGrid"
+            Grid.Row="2"
+            IsItemClickEnabled="True"
+            ItemClick="OnCollectionClick"
+            SelectionMode="None"
+            Visibility="Collapsed">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="vm:CollectionViewModel">
+                    <StackPanel Width="160" Padding="0,0,0,8" Spacing="4">
+                        <controls:CoverImage Width="160" Height="160" DecodeWidth="160" ItemId="{x:Bind CoverItemId}" />
+                        <TextBlock
+                            MaxLines="2"
+                            Style="{StaticResource LfBookTitleStyle}"
+                            Text="{x:Bind Name}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Info}" />
                     </StackPanel>
                 </DataTemplate>
             </GridView.ItemTemplate>

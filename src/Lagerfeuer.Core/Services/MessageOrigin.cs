@@ -44,4 +44,6 @@ public static class MessageOrigins
     public const string Podcast = "podcast";
     public const string Playlists = "playlists";
     public const string Playlist = "playlist";
+    public const string Collections = "collections";
+    public const string Collection = "collection";
 }

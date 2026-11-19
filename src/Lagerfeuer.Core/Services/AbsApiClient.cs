@@ -363,6 +363,50 @@ public sealed class AbsApiClient : IDisposable
         => SendJsonAsync<Playlist>(HttpMethod.Delete,
             $"api/playlists/{Seg(playlistId)}/item/{Seg(itemId)}{(episodeId is null ? "" : "/" + Seg(episodeId))}", null, ct);
 
+    // ---------- Sammlungen (#35) ----------
+
+    public async Task<List<Collection>> GetCollectionsAsync(string libraryId, CancellationToken ct = default)
+        => (await SendJsonAsync<CollectionsResponse>(HttpMethod.Get, $"api/libraries/{Seg(libraryId)}/collections?limit=500", null, ct)).Results;
+
+    public Task<Collection> GetCollectionAsync(string collectionId, CancellationToken ct = default)
+        => SendJsonAsync<Collection>(HttpMethod.Get, $"api/collections/{Seg(collectionId)}", null, ct);
+
+    public Task<Collection> CreateCollectionAsync(string libraryId, string name, string bookId, CancellationToken ct = default)
+    {
+        Seg(libraryId); Seg(bookId);
+        return SendJsonAsync<Collection>(HttpMethod.Post, "api/collections", new { libraryId, name, books = new[] { bookId } }, ct);
+    }
+
+    public Task<Collection> RenameCollectionAsync(string collectionId, string name, CancellationToken ct = default)
+        => SendJsonAsync<Collection>(HttpMethod.Patch, $"api/collections/{Seg(collectionId)}", new { name }, ct);
+
+    /// <summary>
+    /// Neue Reihenfolge. PATCH ersetzt die ganze Bücherliste; deshalb wird vorher der aktuelle Stand geholt. Hat
+    /// jemand inzwischen Bücher hinzugefügt oder entfernt, wird nichts geschickt und der neue Stand zurückgegeben.
+    /// </summary>
+    public async Task<CollectionReorderResult> ReorderCollectionAsync(string collectionId, IReadOnlyList<string> order,
+        CancellationToken ct = default)
+    {
+        var path = $"api/collections/{Seg(collectionId)}";
+        foreach (var id in order) Seg(id);
+        var fresh = await GetCollectionAsync(collectionId, ct);
+        if (!CollectionRules.SameBooks(order, fresh)) return new(false, fresh);
+        return new(true, await SendJsonAsync<Collection>(HttpMethod.Patch, path, new { books = order }, ct));
+    }
+
+    public Task DeleteCollectionAsync(string collectionId, CancellationToken ct = default)
+        => SendNoContentAsync(HttpMethod.Delete, $"api/collections/{Seg(collectionId)}", null, ct);
+
+    public Task<Collection> AddToCollectionAsync(string collectionId, string bookId, CancellationToken ct = default)
+    {
+        var path = $"api/collections/{Seg(collectionId)}/book";
+        Seg(bookId);
+        return SendJsonAsync<Collection>(HttpMethod.Post, path, new { id = bookId }, ct);
+    }
+
+    public Task<Collection> RemoveFromCollectionAsync(string collectionId, string bookId, CancellationToken ct = default)
+        => SendJsonAsync<Collection>(HttpMethod.Delete, $"api/collections/{Seg(collectionId)}/book/{Seg(bookId)}", null, ct);
+
     // ---------- Lesezeichen ----------
 
     public async Task<List<Bookmark>> GetBookmarksAsync(string itemId, CancellationToken ct = default)

@@ -447,6 +447,8 @@ public sealed partial class MainWindow : Window
 
     public void OpenDownloads() => ContentFrame.Navigate(typeof(DownloadsPage));
 
+    public void OpenCollection(string collectionId) => ContentFrame.Navigate(typeof(CollectionPage), collectionId);
+
     public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
 
     public void OpenSeries(string libraryId, string seriesId, string name)
