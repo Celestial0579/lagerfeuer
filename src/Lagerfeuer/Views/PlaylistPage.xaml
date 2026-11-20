@@ -31,6 +31,12 @@
                         <TextBlock Text="Alle abspielen" />
                     </StackPanel>
                 </Button>
+                <Button x:Name="DownloadButton" Click="OnDownload" ToolTipService.ToolTip="Alle Bücher der Liste in die Downloads legen">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE896;" />
+                        <TextBlock Text="Liste herunterladen" />
+                    </StackPanel>
+                </Button>
                 <Button Click="OnRename">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="14" Glyph="&#xE8AC;" />
