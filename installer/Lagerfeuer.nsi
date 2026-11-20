@@ -7,7 +7,7 @@
 ;   makensis /INPUTCHARSET UTF8 /DVERSION=0.1.0 /DARCH=x64 /DSRCDIR=<publish-ordner> /DOUTFILE=<setup.exe> /DICON=<ico> Lagerfeuer.nsi
 ;
 ; Unbeaufsichtigt:  Lagerfeuer-…-setup.exe /S [/D=%LOCALAPPDATA%\Programs\Lagerfeuer]
-;                   Ein Ordner außerhalb des Benutzerprofils bekommt eingeschränkte Rechte (siehe SecureInstDir).
+;                   Der Installationsordner bekommt eingeschränkte Rechte (siehe SecureInstDir).
 ; Vom Updater:      Lagerfeuer-…-setup.exe /S /RESTART   (wartet auf das Beenden der App und startet sie danach neu)
 ; Deinstallation:   uninstall.exe /S
 
@@ -343,20 +343,30 @@ FunctionEnd
 ; oft alle angemeldeten Benutzer Dateien anlegen. Ein anderer Benutzer könnte dann Lagerfeuer.exe oder eine DLL
 ; austauschen, und Lagerfeuer liefe beim nächsten Start mit den Rechten des Opfers.
 
-; $R0 = 1, wenn $INSTDIR nicht im Benutzerprofil liegt, sonst 0
+; $R0 = 1, wenn $INSTDIR dem Pfad nach nicht im Benutzerprofil liegt, sonst 0. Nur für die Warnung auf der
+; Ordnerseite: „..“ wird vorher aufgelöst, eine Junction oder ein Link im Pfad aber nicht. Die Rechte schränkt
+; SecureInstDir deshalb immer ein, auch im Profil (#61).
 Function IsOutsideProfile
   Push $R1
   Push $R2
+  Push $R3
+  ClearErrors
+  GetFullPathName $R3 "$INSTDIR"    ; C:\Users\name\..\..\Lagerfeuer → C:\Lagerfeuer
+  ${If} ${Errors}
+  ${OrIf} $R3 == ""
+    StrCpy $R3 "$INSTDIR"
+  ${EndIf}
   StrLen $R1 "$PROFILE"
-  StrCpy $R2 "$INSTDIR" $R1
+  StrCpy $R2 "$R3" $R1
   StrCpy $R0 1
   ${If} $R2 == "$PROFILE"           ; der Vergleich von LogicLib achtet nicht auf Groß- und Kleinschreibung
-    StrCpy $R2 "$INSTDIR" 1 $R1
+    StrCpy $R2 "$R3" 1 $R1
     ${If} $R2 == "\"
     ${OrIf} $R2 == ""
       StrCpy $R0 0
     ${EndIf}
   ${EndIf}
+  Pop $R3
   Pop $R2
   Pop $R1
 FunctionEnd
@@ -373,46 +383,46 @@ Function DirectoryLeave
   Pop $R0
 FunctionEnd
 
-; Außerhalb des Profils: Vererbung aus, Vollzugriff nur für den Benutzer, SYSTEM und die Administratoren; was
+; Immer, auch im Profil: Vererbung aus, Vollzugriff nur für den Benutzer, SYSTEM und die Administratoren; was
 ; schon im Ordner liegt, übernimmt diese Rechte. Gelingt das nicht, wird nicht installiert.
+; Bis 0.2.7 nur außerhalb des Profils, entschieden am Anfang des Pfads. Liegt aber ein Teil des Pfads auf einer
+; Junction (etwa %LOCALAPPDATA%\Programs nach D:\ verlegt), ist der Ordner nur dem Namen nach im Profil (#61).
+; Im Profil schadet die Einschränkung nicht: Dort haben ohnehin nur diese drei Zugriff.
 Function SecureInstDir
   Push $R0
   Push $R1
   Push $R2
-  Call IsOutsideProfile
-  ${If} $R0 == 1
-    CreateDirectory "$INSTDIR"
-    ; Den Benutzer über seine SID nennen, nicht als %USERDOMAIN%\%USERNAME%: Die Umgebungsvariablen stimmen nicht
-    ; in jeder Sitzung (über SSH steht dort etwa WORKGROUP), und dann fände icacls das Konto nicht.
-    ; whoami /user /fo csv /nh liefert "rechner\name","S-1-5-21-…".
-    nsExec::ExecToStack '"$SYSDIR\whoami.exe" /user /fo csv /nh'
-    Pop $R0
-    Pop $R1
-    StrCpy $R2 ""
-    ${If} $R0 == 0
-      ${WordFind} '$R1' '","' "+2" $R2
-      ${WordFind} '$R2' '"' "+1" $R2
-    ${EndIf}
-    StrCpy $R1 $R2 4
-    ${If} $R1 == "S-1-"
-      nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR" /inheritance:r /grant:r "*$R2:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"'
-      Pop $R0                       ; Exitcode
-      Pop $R1                       ; Ausgabe
-    ${Else}
-      StrCpy $R0 1                  ; SID unbekannt: nicht installieren
-    ${EndIf}
-    ${If} $R0 != 0
-      MessageBox MB_OK|MB_ICONSTOP "Die Rechte des Installationsordners ließen sich nicht auf dich beschränken:$\r$\n$INSTDIR$\r$\n$\r$\nBitte wähle einen Ordner in deinem Benutzerprofil." /SD IDOK
-      Pop $R2
-      Pop $R1
-      Pop $R0
-      Abort
-    ${EndIf}
-    ; Was schon darin liegt, erbt ab jetzt nur noch diese Rechte (fremde ausdrückliche Rechte fallen weg).
-    nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR\*" /reset /T /C /Q'
-    Pop $R0
-    Pop $R1
+  CreateDirectory "$INSTDIR"
+  ; Den Benutzer über seine SID nennen, nicht als %USERDOMAIN%\%USERNAME%: Die Umgebungsvariablen stimmen nicht
+  ; in jeder Sitzung (über SSH steht dort etwa WORKGROUP), und dann fände icacls das Konto nicht.
+  ; whoami /user /fo csv /nh liefert "rechner\name","S-1-5-21-…".
+  nsExec::ExecToStack '"$SYSDIR\whoami.exe" /user /fo csv /nh'
+  Pop $R0
+  Pop $R1
+  StrCpy $R2 ""
+  ${If} $R0 == 0
+    ${WordFind} '$R1' '","' "+2" $R2
+    ${WordFind} '$R2' '"' "+1" $R2
   ${EndIf}
+  StrCpy $R1 $R2 4
+  ${If} $R1 == "S-1-"
+    nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR" /inheritance:r /grant:r "*$R2:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"'
+    Pop $R0                       ; Exitcode
+    Pop $R1                       ; Ausgabe
+  ${Else}
+    StrCpy $R0 1                  ; SID unbekannt: nicht installieren
+  ${EndIf}
+  ${If} $R0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "Die Rechte des Installationsordners ließen sich nicht auf dich beschränken:$\r$\n$INSTDIR$\r$\n$\r$\nBitte wähle einen anderen Ordner, am besten den vorgeschlagenen unter %LOCALAPPDATA%\Programs." /SD IDOK
+    Pop $R2
+    Pop $R1
+    Pop $R0
+    Abort
+  ${EndIf}
+  ; Was schon darin liegt, erbt ab jetzt nur noch diese Rechte (fremde ausdrückliche Rechte fallen weg).
+  nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$INSTDIR\*" /reset /T /C /Q'
+  Pop $R0
+  Pop $R1
   Pop $R2
   Pop $R1
   Pop $R0

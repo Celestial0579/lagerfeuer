@@ -13,8 +13,9 @@
       3  Im Quelltext des Setups nennt jeder Aufruf eines Programms dieses mit vollem Pfad.
       4  Die App startet kein Programm nur beim Namen: Gegenprobe mit dem früheren Aufruf von explorer.exe,
          dazu der Quelltext.
-      5  Ein frei gewählter Ordner im Laufwerksstamm (wie C:\Lagerfeuer) bekommt Rechte nur für den Benutzer,
-         SYSTEM und die Administratoren; im Benutzerprofil bleibt es bei den geerbten Rechten (#46).
+      5  Der Installationsordner bekommt Rechte nur für den Benutzer, SYSTEM und die Administratoren: im
+         Laufwerksstamm (wie C:\Lagerfeuer, #46), im Benutzerprofil, über eine Junction im Profil und über einen
+         Pfad mit „..“, der nur dem Anfang nach im Profil liegt (#61).
       6  Die Einstellungen liegen unter Software\Celestial0579\Lagerfeuer; ein Update übernimmt den Ordner aus dem
          alten Schlüssel Software\Lagerfeuer und löscht ihn, die Deinstallation räumt beide weg (#48).
       7  Die Deinstallation entfernt nur die installierten Dateien; Fremdes im gewählten Ordner bleibt, im Profil und
@@ -362,14 +363,47 @@ finally {
     Remove-Item -LiteralPath $rootTarget -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Im Benutzerprofil bleibt es bei den geerbten Rechten.
+# Prüft, dass $Real nach der Installation über $InstallDir nur noch dem Benutzer, SYSTEM und den Administratoren gehört.
+function Test-Restricted([string]$InstallDir, [string]$Real, [string]$Label) {
+    $code = Invoke-Program $setup @('/S', "/D=$InstallDir") $Work
+    Check ($code -eq 0) "$Label`: Exitcode 0 (war $code)"
+    Check (Test-Path -LiteralPath (Join-Path $Real 'Lagerfeuer.exe')) "$Label`: installiert nach $Real"
+    Check (Get-Acl -LiteralPath $Real).AreAccessRulesProtected "$Label`: Der Ordner erbt keine Rechte mehr"
+    $sids = Get-Sids $Real
+    Check (-not ($sids | Where-Object { $_ -notin $allowed })) "$Label`: nur Benutzer, SYSTEM und Administratoren ($($sids -join ', '))"
+    $null = Invoke-Program (Join-Path $Real 'uninstall.exe') @('/S') $Work
+    Wait-Gone (Join-Path $Real 'Lagerfeuer.exe')
+}
+
+# Im Benutzerprofil ebenso (#61): Dort schadet die Einschränkung nicht.
 $profileTarget = Join-Path $env:LOCALAPPDATA "Programs\Lagerfeuer-Rechtepruefung-$PID"
-$code = Invoke-Program $setup @('/S', "/D=$profileTarget") $Work
-Check ($code -eq 0) "Exitcode 0 (war $code)"
-Check (-not (Get-Acl -LiteralPath $profileTarget).AreAccessRulesProtected) 'Im Benutzerprofil erbt der Ordner seine Rechte wie bisher'
-$null = Invoke-Program (Join-Path $profileTarget 'uninstall.exe') @('/S') $Work
-Wait-Gone $profileTarget
-Check (-not (Test-Path $profileTarget)) 'Die Deinstallation entfernt den Ordner'
+try {
+    Test-Restricted $profileTarget $profileTarget 'Im Profil'
+    Check (-not (Test-Path $profileTarget)) 'Die Deinstallation entfernt den Ordner'
+}
+finally { Remove-Item -LiteralPath $profileTarget -Recurse -Force -ErrorAction SilentlyContinue }
+
+# Junction im Profil (#61): %LOCALAPPDATA%\Programs\… zeigt auf einen Ordner im Laufwerksstamm, der dessen Rechte erbt.
+# Dem Pfad nach liegt der Ordner im Profil, in Wahrheit auf dem Laufwerk, wo andere Benutzer schreiben dürfen.
+$junctionReal = Join-Path "$env:SystemDrive\" "Lagerfeuer-Junctionziel-$PID"
+$junction = Join-Path $env:LOCALAPPDATA "Programs\Lagerfeuer-Junction-$PID"
+try {
+    New-Item -ItemType Directory -Force $junctionReal | Out-Null
+    New-Item -ItemType Junction -Path $junction -Target $junctionReal | Out-Null
+    Check (-not (Get-Acl -LiteralPath $junctionReal).AreAccessRulesProtected) 'Ausgangslage: Das Ziel der Junction erbt die Rechte des Laufwerksstamms'
+    Test-Restricted (Join-Path $junction 'Lagerfeuer') (Join-Path $junctionReal 'Lagerfeuer') 'Über eine Junction'
+}
+finally {
+    if (Test-Path -LiteralPath $junction) { (Get-Item -LiteralPath $junction).Delete() } # nur die Junction, nicht ihr Ziel
+    Remove-Item -LiteralPath $junctionReal -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Pfad mit „..“ (#61): beginnt mit dem Profilpfad, zeigt aber in den Laufwerksstamm.
+$dotsReal = Join-Path "$env:SystemDrive\" "Lagerfeuer-Punktpfad-$PID"
+$depth = ($env:USERPROFILE.TrimEnd('\') -split '\\').Count - 1
+$dots = $env:USERPROFILE.TrimEnd('\') + ('\..' * $depth) + "\Lagerfeuer-Punktpfad-$PID"
+try { Test-Restricted $dots $dotsReal 'Über „..“' }
+finally { Remove-Item -LiteralPath $dotsReal -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ---------------------------------------------------------------- 6 Registry: Umzug des Einstellungsschlüssels
 
