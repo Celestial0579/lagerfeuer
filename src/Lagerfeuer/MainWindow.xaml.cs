@@ -445,6 +445,8 @@ public sealed partial class MainWindow : Window
 
     public void OpenPlaylist(string playlistId) => ContentFrame.Navigate(typeof(PlaylistPage), playlistId);
 
+    public void OpenDownloads() => ContentFrame.Navigate(typeof(DownloadsPage));
+
     public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
 
     public void OpenSeries(string libraryId, string seriesId, string name)
