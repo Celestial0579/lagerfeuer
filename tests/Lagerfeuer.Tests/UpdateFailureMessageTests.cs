@@ -129,6 +129,8 @@ public sealed class UpdateFailureMessageTests : IDisposable
     {
         var service = Create(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var setup = Path.Combine(_dir.Path, "Lagerfeuer-0.2.0-win-x64-setup.exe");
+        File.WriteAllBytes(setup, Bytes);
+        service.HoldVerified(setup, Digest); // wie nach DownloadAsync
         var cause = new Win32Exception(5, $"An error occurred trying to start process '{setup}' with working directory 'C:\\WINDOWS\\system32'. Zugriff verweigert");
 
         var ex = Assert.Throws<InvalidOperationException>(() => service.LaunchInstaller(setup, _ => throw cause));
@@ -143,6 +145,8 @@ public sealed class UpdateFailureMessageTests : IDisposable
     {
         var service = Create(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var setup = Path.Combine(_dir.Path, "Lagerfeuer-0.2.0-win-x64-setup.exe");
+        File.WriteAllBytes(setup, Bytes);
+        service.HoldVerified(setup, Digest); // wie nach DownloadAsync
         ProcessStartInfo? seen = null;
 
         service.LaunchInstaller(setup, info => { seen = info; return null; });

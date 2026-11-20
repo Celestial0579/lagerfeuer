@@ -130,9 +130,11 @@ public sealed class UpdateService
         // Auf eine Vorabversion folgt die fertige Fassung derselben Nummer (0.2.5-beta.1 → 0.2.5): Sie ist neuer.
         if (version < _current || (version == _current && !_currentIsPrerelease)) return null;
 
-        // Nur eine Datei, die genau so heißt, wie build/publish.ps1 sie für diese Variante und Architektur nennt.
-        // Alles andere im Release wird nicht angeboten, auch wenn es auf dieselbe Endung hört.
-        var asset = release.Assets.FirstOrDefault(a => IsExpectedAssetName(a.Name, _portable, _rid));
+        // Nur eine Datei, die genau so heißt, wie build/publish.ps1 sie für diese Variante und Architektur nennt,
+        // mit genau der Version des Release (#60). Alles andere im Release wird nicht angeboten, auch wenn es auf
+        // dieselbe Endung hört. Passen mehrere, ist unklar, welche gemeint ist: dann keine (nur die Release-Seite).
+        var matching = release.Assets.Where(a => IsExpectedAssetName(a.Name, _portable, _rid, version)).Take(2).ToList();
+        var asset = matching.Count == 1 ? matching[0] : null;
 
         return new UpdateInfo(version, release.Name is { Length: > 0 } n ? n : release.TagName, ReleasePage(release.HtmlUrl),
             asset is null ? null : new UpdateAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, ParseDigest(asset.Digest)));
@@ -180,9 +182,11 @@ public sealed class UpdateService
         if (!IsReleaseDownloadUrl(asset.DownloadUrl))
             throw new InvalidOperationException("Die Adresse des Updates gehört nicht zu den Releases von Lagerfeuer – es wird nicht geladen.");
         var name = Path.GetFileName(asset.Name);
+        ReleaseHeld(); // ein früherer Download ist damit überholt
+        // Das Setup in einen eigenen, neu angelegten Ordner: Kein anderes Programm kennt den Namen vorher (#60).
         var target = _downloadDirectory is not null ? Path.Combine(_downloadDirectory, name)
             : _portable ? Environment.ProcessPath + ".new"
-            : Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update", name);
+            : Path.Combine(Directory.CreateTempSubdirectory(UpdateTempPrefix).FullName, name);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
         using var resp = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -215,13 +219,98 @@ public sealed class UpdateService
         // Die Prüfsumme sagt nur, dass die Datei so ankam, wie sie im Release liegt. Ob sie ein Programm ist,
         // zeigt erst ihr Kopf. Ohne diese Prüfung bekäme Windows die Datei zum Start, und für etwas, das kein
         // Programm ist, zeigt es einen eigenen Dialog, hinter dem die App wartet.
+        // Ab hier bis zum Start gegen Schreiben gesperrt, und die Prüfsumme gilt für genau den gesperrten Inhalt (#60).
+        try
+        {
+            HoldVerified(target, expected);
+        }
+        catch
+        {
+            File.Delete(target);
+            throw;
+        }
         if (!IsWindowsProgram(target, _portable, _rid))
         {
+            ReleaseHeld();
             File.Delete(target);
             throw new InvalidOperationException(
                 "Die heruntergeladene Datei ist kein Windows-Programm für diesen Rechner – Download verworfen.");
         }
         return target;
+    }
+
+    /// <summary>Anfang der Ordner in %TEMP%, in die das Setup geladen wird.</summary>
+    internal const string UpdateTempPrefix = "Lagerfeuer-Update-";
+
+    private readonly Lock _heldLock = new();
+    private FileStream? _held;
+    private string? _heldPath, _heldSha256;
+
+    /// <summary>
+    /// Öffnet die geladene Datei so, dass bis zum Start niemand hineinschreiben kann, und bildet die Prüfsumme aus
+    /// genau diesem Inhalt. Windows prüft eine frisch geladene Datei vor dem Start mitunter viele Sekunden lang (#13);
+    /// ohne Sperre ließe sie sich in dieser Zeit austauschen (#60).
+    /// <para>
+    /// Das Setup bleibt auch gegen Umbenennen und Löschen gesperrt. Die portable EXE muss Lagerfeuer selbst an den
+    /// Platz der laufenden schieben; dort ist Umbenennen erlaubt, und die Prüfsumme wird unmittelbar vor dem Tausch
+    /// noch einmal gebildet.
+    /// </para>
+    /// </summary>
+    internal void HoldVerified(string path, string expectedSha256)
+    {
+        var share = _portable ? FileShare.Read | FileShare.Delete : FileShare.Read;
+        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, share);
+        try
+        {
+            if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Die Prüfsumme des Updates stimmt nicht – Download verworfen.");
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+        lock (_heldLock)
+        {
+            _held?.Dispose();
+            (_held, _heldPath, _heldSha256) = (stream, Path.GetFullPath(path), expectedSha256);
+        }
+    }
+
+    /// <summary>Gibt die Sperre der geladenen Datei frei.</summary>
+    internal void ReleaseHeld()
+    {
+        lock (_heldLock)
+        {
+            _held?.Dispose();
+            (_held, _heldPath, _heldSha256) = (null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// Ist <paramref name="path"/> die zuletzt geprüfte und gesperrte Datei, mit unverändertem Inhalt?
+    /// Gelesen wird über den Pfad, nicht über die Sperre: So fällt auch auf, wenn die Datei umbenannt und
+    /// durch eine andere ersetzt wurde.
+    /// </summary>
+    private void EnsureVerified(string path)
+    {
+        string? expected;
+        lock (_heldLock)
+            expected = _held is not null && _heldPath == Path.GetFullPath(path) ? _heldSha256 : null;
+        if (expected is null)
+            throw new InvalidOperationException("Das Update ist nicht geprüft – es wird nicht gestartet.");
+        string actual;
+        try
+        {
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            actual = Convert.ToHexString(SHA256.HashData(file));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException("Die heruntergeladene Datei ist nicht mehr da – das Update wurde nicht eingespielt.", ex);
+        }
+        if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Die heruntergeladene Datei wurde nach der Prüfung verändert – das Update wurde nicht eingespielt.");
     }
 
     private const ushort MachineX86 = 0x014C, MachineX64 = 0x8664, MachineArm64 = 0xAA64;
@@ -280,10 +369,27 @@ public sealed class UpdateService
     internal void LaunchInstaller(string downloadedFile, Func<ProcessStartInfo, Process?> start)
     {
         // Wie CheckAsync und DownloadAsync nach der Variante dieser Instanz, nicht nach der statischen Eigenschaft.
+        // Nur die geprüfte Datei, und nur mit dem geprüften Inhalt (#60).
+        try
+        {
+            EnsureVerified(downloadedFile);
+        }
+        catch
+        {
+            ReleaseHeld();
+            throw;
+        }
         if (_portable)
         {
             var exe = Environment.ProcessPath!;
-            ReplaceExecutable(exe, downloadedFile);
+            try
+            {
+                ReplaceExecutable(exe, downloadedFile);
+            }
+            finally
+            {
+                ReleaseHeld(); // Die Datei liegt jetzt (oder wieder) unter anderem Namen.
+            }
             try
             {
                 start(new ProcessStartInfo(exe, $"{AfterUpdateArg} {Environment.ProcessId}") { UseShellExecute = true });
@@ -306,6 +412,11 @@ public sealed class UpdateService
             catch (Exception ex)
             {
                 throw Failure("Das Setup ließ sich nicht starten", ex);
+            }
+            finally
+            {
+                // Das gestartete Setup hat die Datei geöffnet; die eigene Sperre braucht es nicht mehr.
+                ReleaseHeld();
             }
         }
         Log.Info($"Update gestartet: {downloadedFile}");
@@ -430,8 +541,9 @@ public sealed class UpdateService
                 File.Delete(exe + ".old");
                 File.Delete(exe + ".new");
             }
-            var temp = Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update");
+            var temp = Path.Combine(Path.GetTempPath(), "Lagerfeuer-Update"); // fester Ordner bis 0.2.7
             if (Directory.Exists(temp)) Directory.Delete(temp, recursive: true);
+            RemoveUpdateFolders(Path.GetTempPath());
         }
         catch
         {
@@ -441,6 +553,37 @@ public sealed class UpdateService
         // Nur die portable EXE entpackt sich. Im Hintergrund, damit der Start nicht darauf wartet.
         if (IsPortable)
             _ = Task.Run(() => RemoveStaleExtractions(AppAssembly.Location, Environment.ProcessPath, Path.GetTempPath()));
+    }
+
+    /// <summary>
+    /// Löscht die Ordner früherer Setup-Downloads (<see cref="UpdateTempPrefix"/>…) direkt in <paramref name="temp"/>.
+    /// Verknüpfungen werden nicht verfolgt und bleiben liegen; ein Ordner, aus dem noch ein Setup läuft, auch.
+    /// </summary>
+    internal static void RemoveUpdateFolders(string temp)
+    {
+        IEnumerable<DirectoryInfo> folders;
+        try
+        {
+            folders = new DirectoryInfo(temp).EnumerateDirectories(UpdateTempPrefix + "*").ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        foreach (var dir in folders)
+        {
+            try
+            {
+                if (dir.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                if (dir.EnumerateFileSystemInfos("*", SearchOption.AllDirectories)
+                    .Any(e => e.Attributes.HasFlag(FileAttributes.ReparsePoint))) continue;
+                dir.Delete(recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // noch in Benutzung – beim nächsten Start erneut
+            }
+        }
     }
 
     /// <summary>Endung eines Entpackordners, der geprüft, umbenannt und zum Löschen vorgesehen ist.</summary>
@@ -585,6 +728,15 @@ public sealed class UpdateService
         => name is not null && Regex.IsMatch(name,
             $@"\ALagerfeuer-[0-9]+(\.[0-9]+){{1,3}}-{Regex.Escape(rid)}{(portable ? "" : "-setup")}\.exe\z",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Wie <see cref="IsExpectedAssetName(string?, bool, string)"/>, und die Version im Dateinamen ist genau die des
+    /// Release. Sonst ließe sich über eine alte Datei in einem neuen Release still eine ältere Fassung einspielen (#60).
+    /// </summary>
+    internal static bool IsExpectedAssetName(string? name, bool portable, string rid, Version releaseVersion)
+        => IsExpectedAssetName(name, portable, rid)
+           && TryParseVersion(name!["Lagerfeuer-".Length..name!.IndexOf("-win-", StringComparison.OrdinalIgnoreCase)], out var v)
+           && v == Normalize(releaseVersion);
 
     /// <summary>
     /// Kommt die Adresse aus den Releases dieses Repos? Verlangt sind https, der Host github.com ohne Anmeldedaten
