@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Lagerfeuer.Models;
 
 namespace Lagerfeuer.Services;
@@ -135,12 +136,33 @@ public sealed class AbsApiClient : IDisposable
     public Uri Resolve(string path, Uri? server = null)
     {
         server ??= ServerUri ?? throw new InvalidOperationException("Kein Server konfiguriert.");
-        if (Uri.TryCreate(path, UriKind.Absolute, out var abs) && abs.Scheme.StartsWith("http")) return abs;
+        // Eine volle Adresse nur zum eigenen Server: Das Token geht nie an einen anderen Rechner (#63).
+        if (Uri.TryCreate(path, UriKind.Absolute, out var abs) && abs.Scheme.StartsWith("http"))
+            return Uri.Compare(abs, server, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0
+                ? abs : throw new AbsApiException("Adresse eines anderen Servers.");
         var basePath = server.AbsolutePath; // endet immer auf "/"
         // Läuft ABS unter einem Unterpfad, enthalten contentUrls diesen bereits.
         if (path.StartsWith('/') && basePath.Length > 1 && path.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
             return new Uri(server, path);
         return new Uri(server, path.TrimStart('/'));
+    }
+
+    private static readonly Regex ContentPathPattern =
+        new(@"\Aapi/items/[A-Za-z0-9_-]{1,64}/file/[A-Za-z0-9_-]{1,64}\z", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// contentUrl eines Tracks: absichtlich ein Pfad vom Server, aber nur der Dateiabruf eines Titels
+    /// (<c>/api/items/{id}/file/{ino}</c>, ggf. mit Unterpfad). Alles andere lehnt der Client ab, ohne Anfrage (#63).
+    /// </summary>
+    public Uri ResolveContent(string? contentUrl)
+    {
+        var server = ServerUri ?? throw new InvalidOperationException("Kein Server konfiguriert.");
+        var path = contentUrl ?? "";
+        var basePath = server.AbsolutePath; // endet immer auf "/"
+        if (basePath.Length > 1 && path.StartsWith(basePath, StringComparison.OrdinalIgnoreCase)) path = path[basePath.Length..];
+        else if (path.StartsWith('/')) path = path[1..];
+        if (!ContentPathPattern.IsMatch(path)) throw new AbsApiException("Ungültige Dateiadresse vom Server.");
+        return new Uri(server, path);
     }
 
     // ---------- Anmeldung ----------
@@ -248,7 +270,7 @@ public sealed class AbsApiClient : IDisposable
 
     /// <summary>Beendet die Sitzung eines anderen Geräts (dessen Access-Token gilt noch bis zum Ablauf).</summary>
     public Task DeleteAuthSessionAsync(string sessionId, CancellationToken ct = default)
-        => SendNoContentAsync(HttpMethod.Delete, $"api/me/sessions/{sessionId}", null, ct);
+        => SendNoContentAsync(HttpMethod.Delete, $"api/me/sessions/{Seg(sessionId)}", null, ct);
 
     // ---------- Bibliothek ----------
 
@@ -258,29 +280,29 @@ public sealed class AbsApiClient : IDisposable
     public Task<LibraryItemsResponse> GetLibraryItemsAsync(string libraryId, int page, int limit, LibraryQuery? query = null,
         CancellationToken ct = default)
         => SendJsonAsync<LibraryItemsResponse>(HttpMethod.Get,
-            $"api/libraries/{libraryId}/items?limit={limit}&page={page}&minified=1&{(query ?? LibraryQuery.Default).ToQueryString()}", null, ct);
+            $"api/libraries/{Seg(libraryId)}/items?limit={limit}&page={page}&minified=1&{(query ?? LibraryQuery.Default).ToQueryString()}", null, ct);
 
     public Task<SeriesListResponse> GetSeriesAsync(string libraryId, int page, int limit, CancellationToken ct = default)
         => SendJsonAsync<SeriesListResponse>(HttpMethod.Get,
-            $"api/libraries/{libraryId}/series?limit={limit}&page={page}&sort=name", null, ct);
+            $"api/libraries/{Seg(libraryId)}/series?limit={limit}&page={page}&sort=name", null, ct);
 
     /// <summary>Bücher einer Serie in Lesereihenfolge (der Server sortiert bei Serienfilter nach Band).</summary>
     public async Task<List<LibraryItem>> GetSeriesBooksAsync(string libraryId, string seriesId, CancellationToken ct = default)
         => (await SendJsonAsync<LibraryItemsResponse>(HttpMethod.Get,
-            $"api/libraries/{libraryId}/items?limit=500&page=0&minified=1&filter={LibraryQuery.EncodeFilter("series", seriesId)}", null, ct)).Results;
+            $"api/libraries/{Seg(libraryId)}/items?limit=500&page=0&minified=1&filter={LibraryQuery.EncodeFilter("series", seriesId)}", null, ct)).Results;
 
     public async Task<List<Author>> GetAuthorsAsync(string libraryId, CancellationToken ct = default)
-        => (await SendJsonAsync<AuthorsResponse>(HttpMethod.Get, $"api/libraries/{libraryId}/authors?sort=name", null, ct)).Authors;
+        => (await SendJsonAsync<AuthorsResponse>(HttpMethod.Get, $"api/libraries/{Seg(libraryId)}/authors?sort=name", null, ct)).Authors;
 
     /// <summary>Autor mit Büchern und Serien.</summary>
     public Task<Author> GetAuthorAsync(string authorId, CancellationToken ct = default)
-        => SendJsonAsync<Author>(HttpMethod.Get, $"api/authors/{authorId}?include=items,series", null, ct);
+        => SendJsonAsync<Author>(HttpMethod.Get, $"api/authors/{Seg(authorId)}?include=items,series", null, ct);
 
     public async Task<byte[]?> GetAuthorImageAsync(string authorId, CancellationToken ct = default)
     {
         using var cts = WithTimeout(ct);
         using var resp = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get,
-            Resolve($"api/authors/{authorId}/image?width=400&format=jpeg")), HttpCompletionOption.ResponseContentRead, cts.Token);
+            Resolve($"api/authors/{Seg(authorId)}/image?width=400&format=jpeg")), HttpCompletionOption.ResponseContentRead, cts.Token);
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureSuccessAsync(resp);
         return await resp.Content.ReadAsByteArrayAsync(cts.Token);
@@ -344,13 +366,13 @@ public sealed class AbsApiClient : IDisposable
     // ---------- Lesezeichen ----------
 
     public async Task<List<Bookmark>> GetBookmarksAsync(string itemId, CancellationToken ct = default)
-        => (await SendJsonAsync<BookmarksResponse>(HttpMethod.Get, $"api/me/bookmarks/{itemId}", null, ct)).Bookmarks;
+        => (await SendJsonAsync<BookmarksResponse>(HttpMethod.Get, $"api/me/bookmarks/{Seg(itemId)}", null, ct)).Bookmarks;
 
     public Task<Bookmark> CreateBookmarkAsync(string itemId, double time, string title, CancellationToken ct = default)
-        => SendJsonAsync<Bookmark>(HttpMethod.Post, $"api/me/item/{itemId}/bookmark", new { time, title }, ct);
+        => SendJsonAsync<Bookmark>(HttpMethod.Post, $"api/me/item/{Seg(itemId)}/bookmark", new { time, title }, ct);
 
     public Task<Bookmark> RenameBookmarkAsync(string itemId, double time, string title, CancellationToken ct = default)
-        => SendJsonAsync<Bookmark>(HttpMethod.Patch, $"api/me/item/{itemId}/bookmark", new { time, title }, ct);
+        => SendJsonAsync<Bookmark>(HttpMethod.Patch, $"api/me/item/{Seg(itemId)}/bookmark", new { time, title }, ct);
 
     /// <summary>
     /// Löscht ein Lesezeichen. Der Server vergleicht die Zeit exakt als Zahl – daher verlustfrei
@@ -358,15 +380,15 @@ public sealed class AbsApiClient : IDisposable
     /// </summary>
     public Task DeleteBookmarkAsync(string itemId, double time, CancellationToken ct = default)
         => SendNoContentAsync(HttpMethod.Delete,
-            $"api/me/item/{itemId}/bookmark/{time.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}", null, ct);
+            $"api/me/item/{Seg(itemId)}/bookmark/{time.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}", null, ct);
 
     public async Task<List<LibraryItem>> SearchAsync(string libraryId, string query, CancellationToken ct = default)
         => (await SendJsonAsync<SearchResponse>(HttpMethod.Get,
-                $"api/libraries/{libraryId}/search?q={Uri.EscapeDataString(query)}&limit=50", null, ct)) is var r
+                $"api/libraries/{Seg(libraryId)}/search?q={Uri.EscapeDataString(query)}&limit=50", null, ct)) is var r
             ? r.Book.Concat(r.Podcast).Select(b => b.LibraryItem).ToList() : [];
 
     public Task<LibraryItem> GetItemAsync(string itemId, CancellationToken ct = default)
-        => SendJsonAsync<LibraryItem>(HttpMethod.Get, $"api/items/{itemId}?expanded=1&include=progress", null, ct);
+        => SendJsonAsync<LibraryItem>(HttpMethod.Get, $"api/items/{Seg(itemId)}?expanded=1&include=progress", null, ct);
 
     public async Task<List<LibraryItem>> GetItemsInProgressAsync(CancellationToken ct = default)
         => (await SendJsonAsync<ItemsInProgressResponse>(HttpMethod.Get, "api/me/items-in-progress?limit=50", null, ct)).LibraryItems;
@@ -382,7 +404,7 @@ public sealed class AbsApiClient : IDisposable
     {
         using var cts = WithTimeout(ct);
         using var resp = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get,
-            Resolve($"api/items/{itemId}/cover?width=600&format=jpeg")), HttpCompletionOption.ResponseContentRead, cts.Token);
+            Resolve($"api/items/{Seg(itemId)}/cover?width=600&format=jpeg")), HttpCompletionOption.ResponseContentRead, cts.Token);
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureSuccessAsync(resp);
         return await resp.Content.ReadAsByteArrayAsync(cts.Token);
@@ -401,7 +423,7 @@ public sealed class AbsApiClient : IDisposable
     /// <summary>Startet eine Playback-Session für ein Buch bzw. (mit episodeId) eine Podcast-Folge.</summary>
     public Task<PlaybackSession> StartPlaybackAsync(string itemId, string deviceId, string? episodeId = null, CancellationToken ct = default)
         => SendJsonAsync<PlaybackSession>(HttpMethod.Post,
-            episodeId is null ? $"api/items/{itemId}/play" : $"api/items/{itemId}/play/{episodeId}", new
+            episodeId is null ? $"api/items/{Seg(itemId)}/play" : $"api/items/{Seg(itemId)}/play/{Seg(episodeId)}", new
         {
             deviceInfo = CreateDeviceInfo(deviceId),
             forceDirectPlay = true,
@@ -427,17 +449,17 @@ public sealed class AbsApiClient : IDisposable
 
     public Task SyncSessionAsync(string sessionId, double currentTime, double timeListened, double duration,
         CancellationToken ct = default)
-        => SendNoContentAsync(HttpMethod.Post, $"api/session/{sessionId}/sync",
+        => SendNoContentAsync(HttpMethod.Post, $"api/session/{Seg(sessionId)}/sync",
             new { currentTime, timeListened, duration }, ct);
 
     public Task CloseSessionAsync(string sessionId, double currentTime, double timeListened, double duration,
         CancellationToken ct = default)
-        => SendNoContentAsync(HttpMethod.Post, $"api/session/{sessionId}/close",
+        => SendNoContentAsync(HttpMethod.Post, $"api/session/{Seg(sessionId)}/close",
             new { currentTime, timeListened, duration }, ct);
 
     public Task UpdateProgressAsync(string itemId, double currentTime, double duration, bool isFinished,
         string? episodeId = null, CancellationToken ct = default)
-        => SendNoContentAsync(HttpMethod.Patch, episodeId is null ? $"api/me/progress/{itemId}" : $"api/me/progress/{itemId}/{episodeId}", new
+        => SendNoContentAsync(HttpMethod.Patch, episodeId is null ? $"api/me/progress/{Seg(itemId)}" : $"api/me/progress/{Seg(itemId)}/{Seg(episodeId)}", new
         {
             currentTime,
             duration,
