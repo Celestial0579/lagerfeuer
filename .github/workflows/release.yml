@@ -47,10 +47,7 @@ jobs:
 
       - name: NSIS bereitstellen
         shell: pwsh
-        run: |
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
-            choco install nsis -y --no-progress
-          }
+        run: ./build/Install-Nsis.ps1 # feste Version, geprüft über die Prüfsumme (#59)
 
       - name: Code-Signing vorbereiten (falls Zertifikat hinterlegt)
         if: env.SIGNING_CERT_PFX_BASE64 != ''
