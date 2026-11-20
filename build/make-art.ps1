@@ -13,7 +13,7 @@ $root = Split-Path $PSScriptRoot -Parent
 
 function C([string] $hex) { [System.Drawing.ColorTranslator]::FromHtml($hex) }
 
-$Glut = C '#AB5019'; $GlutHell = C '#D9713C'; $Funke = C '#E8A33D'; $FunkeHell = C '#F2C46B'
+$Glut = C '#A24C18'; $GlutHell = C '#DB7745'; $Funke = C '#E8A33D'; $FunkeHell = C '#F2C46B'
 $Stahl = C '#33414B'; $StahlTief = C '#212B33'; $StahlHell = C '#B4C6D1'; $Grund = C '#141715'
 
 # Lagerfeuer (Glühen, Scheite, Flammen) im 256er-Koordinatensystem; Transform vorher setzen.
