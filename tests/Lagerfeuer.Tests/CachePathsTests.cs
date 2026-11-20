@@ -175,9 +175,16 @@ public sealed class CachePathsTests : IDisposable
 
         foreach (var p in new[] { cover, author })
         {
+            if (!PlaylistRules.IsPlainId(id))
+            {
+                // keine schlichte ID: keine Anfrage, kein Bild (#63)
+                Assert.Null(p);
+                continue;
+            }
             Assert.NotNull(p);
             Assert.StartsWith(Full(covers) + Path.DirectorySeparatorChar, Full(p!));
         }
+        if (!PlaylistRules.IsPlainId(id)) Assert.Empty(handler.Requests);
         Assert.DoesNotContain(Directory.EnumerateFiles(_dir.Path, "*", SearchOption.AllDirectories),
             f => !Full(f).StartsWith(Full(covers) + Path.DirectorySeparatorChar));
     }

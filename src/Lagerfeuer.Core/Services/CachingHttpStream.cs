@@ -106,6 +106,7 @@ public sealed class CachingHttpStream : Stream
     public static async Task<CachingHttpStream> OpenAsync(AbsApiClient api, string contentPath, string dataPath,
         CancellationToken ct)
     {
+        api.ResolveContent(contentPath); // vor allem anderen prüfen, auch wenn schon Teile im Cache liegen (#63)
         Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
 
         if (!TryLoadMap(dataPath, out var length, out var have))
@@ -124,7 +125,7 @@ public sealed class CachingHttpStream : Stream
     {
         using var resp = await api.SendAsync(() =>
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, api.Resolve(contentPath));
+            var req = new HttpRequestMessage(HttpMethod.Get, api.ResolveContent(contentPath));
             req.Headers.Range = new RangeHeaderValue(0, 0);
             return req;
         }, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -265,7 +266,7 @@ public sealed class CachingHttpStream : Stream
                 var from = (long)start * ChunkSize;
                 using var resp = await _api.SendAsync(() =>
                 {
-                    var req = new HttpRequestMessage(HttpMethod.Get, _api.Resolve(_contentPath));
+                    var req = new HttpRequestMessage(HttpMethod.Get, _api.ResolveContent(_contentPath));
                     req.Headers.Range = new RangeHeaderValue(from, null);
                     return req;
                 }, HttpCompletionOption.ResponseHeadersRead, request.Token);
