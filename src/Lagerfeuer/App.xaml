@@ -11,7 +11,7 @@
 
             <!--
                 Farbschema angelehnt an firestrike.de:
-                Glut #A24C18 / #DB7745 (Akzent), Funke #E8A33D, Stahl #33414B / #212B33 / #B4C6D1,
+                Glut #A24C18 / #DB7745 (Akzent), Funke #E8A33D / #F2B558, Stahl #33414B / #212B33 / #B4C6D1,
                 Grund #EFF0ED / #141715, Fläche #FFFFFF / #1C201D, Linie #C9CCC6 / #38403A, Text #1B1E1C / #E8EBE7.
                 Glut seit 0.2.8 etwas kräftiger, damit sie als Text auf jeder Fläche WCAG AA (4,5:1) erreicht (#66).
                 Werte nach firestrike-branding (Tokens 1.0.0); Überschriften in Stahl tief, Glut nur für Verweise und Akzente (#67).
@@ -57,7 +57,7 @@
                     <SolidColorBrush x:Key="LfLineBrush" Color="#38403A" />
                     <SolidColorBrush x:Key="LfHeadingBrush" Color="#B4C6D1" />
                     <SolidColorBrush x:Key="LfEmberBrush" Color="#DB7745" />
-                    <SolidColorBrush x:Key="LfSparkBrush" Color="#E8A33D" />
+                    <SolidColorBrush x:Key="LfSparkBrush" Color="#F2B558" />
 
                     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8EBE7" />
                     <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A5ADA6" />
