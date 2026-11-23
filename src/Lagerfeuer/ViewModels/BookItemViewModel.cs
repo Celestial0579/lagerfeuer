@@ -104,6 +104,17 @@ public sealed class SeriesViewModel(SeriesItem series)
     public string Info => Series.Books.Count == 1 ? "1 Buch" : $"{Series.Books.Count} Bücher";
 }
 
+/// <summary>Sammlung als Kachel (#35). Name und Anzahl aus bereinigten Angaben.</summary>
+public sealed class CollectionViewModel(Collection collection)
+{
+    public Collection Collection { get; } = collection;
+    public string Id => Collection.Id;
+    public string Name { get; } = CollectionRules.DisplayName(collection);
+    private readonly int _count = CollectionRules.Books(collection).Count;
+    public string? CoverItemId { get; } = CollectionRules.Books(collection).FirstOrDefault()?.Id;
+    public string Info => _count == 1 ? "1 Buch" : $"{_count} Bücher";
+}
+
 /// <summary>Autor als Kachel.</summary>
 public sealed class AuthorViewModel(Author author)
 {

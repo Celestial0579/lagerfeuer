@@ -46,6 +46,9 @@ public sealed class LiveSyncClient : IAsyncDisposable
     /// </summary>
     public event EventHandler<PlaylistChange>? PlaylistChanged;
 
+    /// <summary>collection_added/_updated/_removed (Hintergrund-Thread). Nur ein Hinweis zum Neuladen.</summary>
+    public event EventHandler<CollectionChange>? CollectionChanged;
+
     public event EventHandler<bool>? ConnectionChanged;
 
     public void Start() => _loop ??= Task.Run(RunAsync);
@@ -126,6 +129,10 @@ public sealed class LiveSyncClient : IAsyncDisposable
                 case { Name: "playlist_added" or "playlist_updated" or "playlist_removed" } e
                     when SocketIoProtocol.TryParsePlaylistChange(e.Name, e.Payload) is { } change:
                     PlaylistChanged?.Invoke(this, change);
+                    break;
+                case { Name: "collection_added" or "collection_updated" or "collection_removed" } e
+                    when SocketIoProtocol.TryParseCollectionChange(e.Name, e.Payload) is { } change:
+                    CollectionChanged?.Invoke(this, change);
                     break;
                 case { Name: "user_updated" } e:
                     var user = e.Payload.Deserialize<AbsUser>(AbsApiClient.Json);
@@ -269,6 +276,24 @@ public sealed class SocketIoProtocol(Func<string?> token)
         var userId = Str(payload, "userId");
         if (!PlaylistRules.IsPlainId(id) || !PlaylistRules.IsPlainId(libraryId) || !PlaylistRules.IsPlainId(userId)) return null;
         return new PlaylistChange(kind.Value, id!, libraryId!, userId!);
+    }
+
+    /// <summary>Payload von collection_*: die Sammlung. Übernommen werden nur ID und Bibliothek, nur schlicht.</summary>
+    public static CollectionChange? TryParseCollectionChange(string name, JsonElement payload)
+    {
+        var kind = name switch
+        {
+            "collection_added" => CollectionChangeKind.Added,
+            "collection_updated" => CollectionChangeKind.Updated,
+            "collection_removed" => CollectionChangeKind.Removed,
+            _ => (CollectionChangeKind?)null,
+        };
+        if (kind is null || payload.ValueKind != JsonValueKind.Object) return null;
+        static string? Str(JsonElement o, string p) => o.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var id = Str(payload, "id");
+        var libraryId = Str(payload, "libraryId");
+        if (!PlaylistRules.IsPlainId(id) || !PlaylistRules.IsPlainId(libraryId)) return null;
+        return new CollectionChange(kind.Value, id!, libraryId!);
     }
 
     /// <summary>Payload von user_item_progress_updated: { id, sessionId, deviceDescription, data: MediaProgress }.</summary>

@@ -55,6 +55,8 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - **Filter** nach Fortschritt: nicht begonnen, angefangen, nicht beendet, beendet.
   - Suche, Nachladen beim Scrollen.
   - Buchseite mit Beschreibung, Kapiteln, Fortschritt, **Lesezeichen**, Links zu Autor und Serie, „Als beendet markieren“.
+  - **Wiedergabelisten:** eigene Listen aus Büchern und Podcast-Folgen anlegen, umbenennen, ordnen und nacheinander abspielen; eine ganze Liste auf einmal herunterladen.
+  - **Sammlungen:** Bücherlisten, die alle Nutzer der Bibliothek sehen. Anlegen, umbenennen, beschreiben, ordnen und Bücher entfernen mit dem Recht „Aktualisieren“, eine Sammlung löschen mit „Löschen“; „Alle abspielen“ in ihrer Reihenfolge.
 - **Podcasts**
   - Podcast-Bibliotheken, Podcast-Seite mit allen Folgen (neueste zuerst, gehörte ausblendbar).
   - Wiedergabe und Fortschritt pro Folge.
@@ -184,7 +186,7 @@ build/                  publish.ps1 (EXE, Installer, Signieren), make-art.ps1 (G
 
 ## Roadmap
 
-Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung.
+Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung, Wiedergabelisten, Sammlungen.
 
 Vorbereitet, braucht noch eine Entscheidung:
 - **Code-Signing:** Signiert wird noch nicht.
@@ -197,7 +199,6 @@ Vorbereitet, braucht noch eine Entscheidung:
 
 Ideen für später:
 - Podcast-Folgen herunterladen (offline zunächst nur Bücher).
-- Sammlungen und Playlists.
 - Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
 

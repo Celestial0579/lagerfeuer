@@ -48,7 +48,13 @@ public sealed partial class LibraryPage : Page
     private bool _seriesLoaded;
     private bool _authorsLoaded;
 
-    public LibraryPage() => InitializeComponent();
+    public LibraryPage()
+    {
+        InitializeComponent();
+        // Die Seite bleibt im Speicher (NavigationCacheMode): bei jedem Zeigen an- und beim Verlassen abmelden.
+        Loaded += (_, _) => App.CollectionChanged += OnCollectionChanged;
+        Unloaded += (_, _) => App.CollectionChanged -= OnCollectionChanged;
+    }
 
     private bool IsPodcastLibrary => _library?.MediaType == "podcast";
 
@@ -72,13 +78,14 @@ public sealed partial class LibraryPage : Page
             // Zurück zur Seite: Fortschritt kann sich geändert haben.
             foreach (var vm in items) vm.RefreshProgress();
         }
+        if (_library?.Id == lib.Id && CollectionsGrid.Visibility == Visibility.Visible) _ = LoadCollectionsAsync();
     }
 
     private void SetupControls()
     {
         _updatingControls = true;
         var podcast = IsPodcastLibrary;
-        SeriesTab.Visibility = AuthorsTab.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible;
+        SeriesTab.Visibility = AuthorsTab.Visibility = CollectionsTab.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible;
         // Podcast-Bibliotheken haben nur eine Ansicht: keine Reiterleiste, auch kein einzelnes „Bücher“ (#43).
         ViewSelector.Visibility = LibraryViews.ShowSelector(_library?.MediaType) ? Visibility.Visible : Visibility.Collapsed;
         FilterBox.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible; // Podcasts haben keinen Fortschrittsfilter
@@ -133,6 +140,7 @@ public sealed partial class LibraryPage : Page
         ShowView(view);
         if (view == "series" && !_seriesLoaded) _ = LoadSeriesAsync();
         if (view == "authors" && !_authorsLoaded) _ = LoadAuthorsAsync();
+        if (view == LibraryViews.Collections) _ = LoadCollectionsAsync(); // immer frisch: andere Nutzer ändern sie mit
     }
 
     private void ShowView(string view)
@@ -140,9 +148,11 @@ public sealed partial class LibraryPage : Page
         BooksGrid.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         SeriesGrid.Visibility = view == "series" ? Visibility.Visible : Visibility.Collapsed;
         AuthorsGrid.Visibility = view == "authors" ? Visibility.Visible : Visibility.Collapsed;
+        CollectionsGrid.Visibility = view == LibraryViews.Collections ? Visibility.Visible : Visibility.Collapsed;
         SortPanel.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         NoResults.Visibility = Visibility.Collapsed;
+        NoResults.Text = view == LibraryViews.Collections ? NoCollectionsText() : "Keine Treffer.";
     }
 
     private async Task LoadSeriesAsync()
@@ -191,6 +201,50 @@ public sealed partial class LibraryPage : Page
         {
             LoadingRing.IsActive = false;
         }
+    }
+
+    private int _collectionsGeneration;
+
+    private async Task LoadCollectionsAsync()
+    {
+        if (_library is null) return;
+        var generation = ++_collectionsGeneration;
+        LoadingRing.IsActive = true;
+        try
+        {
+            var list = await App.Api.GetCollectionsAsync(_library.Id);
+            if (generation != _collectionsGeneration) return;
+            var items = list.Where(c => PlaylistRules.IsPlainId(c.Id))
+                .Select(c => new CollectionViewModel(c))
+                .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            CollectionsGrid.ItemsSource = items;
+            App.MainWindow.ClearError(MessageOrigins.Collections);
+            NoResults.Visibility = items.Count == 0 && CollectionsGrid.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            App.MainWindow.ShowError($"Sammlungen konnten nicht geladen werden: {ex.Message}", MessageOrigins.Collections);
+        }
+        finally
+        {
+            LoadingRing.IsActive = false;
+        }
+    }
+
+    /// <summary>Hinweis, wenn eine Bibliothek noch keine Sammlungen hat; wer darf, erfährt, wie er eine anlegt.</summary>
+    private static string NoCollectionsText() => App.CollectionRights.CanEdit
+        ? "Noch keine Sammlungen. Eine neue legst du auf der Seite eines Buchs an: „Zur Sammlung“, dann „Neue Sammlung …“."
+        : "Noch keine Sammlungen.";
+
+    private void OnCollectionChanged(object? sender, CollectionChange change)
+    {
+        if (change.LibraryId == _library?.Id && CollectionsGrid.Visibility == Visibility.Visible) _ = LoadCollectionsAsync();
+    }
+
+    private void OnCollectionClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is CollectionViewModel c) App.MainWindow.OpenCollection(c.Id);
     }
 
     private void OnSeriesClick(object sender, ItemClickEventArgs e)
