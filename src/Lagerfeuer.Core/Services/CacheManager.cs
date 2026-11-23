@@ -10,11 +10,18 @@ namespace Lagerfeuer.Services;
 /// Verwaltet den Audio-Cache: ein Ordner pro Buch (Item-ID), darin eine Datei pro Audiotrack (+ .map),
 /// "item.json" mit allem, was zum Abspielen ohne Server nötig ist, und – bei Downloads – die Markierung
 /// ".pinned". Angeheftete Bücher nimmt die automatische Bereinigung aus.
+/// <para>
+/// Podcast-Folgen (#76) liegen im Ordner ihres Podcasts, wo sie auch beim Streamen landen. Eine heruntergeladene
+/// Folge hat dort "episode_&lt;ID&gt;.json" und die Markierung ".pinned_&lt;ID&gt;" (ID jeweils über
+/// <see cref="CachePaths.SafeId"/>). Die Bereinigung schont dann genau ihre Dateien, nicht den ganzen Ordner.
+/// </para>
 /// </summary>
 public sealed class CacheManager(AbsApiClient api, string root)
 {
     private const string ItemFileName = "item.json";
     private const string PinnedFileName = ".pinned";
+    private const string EpisodeFilePrefix = "episode_";
+    private const string EpisodePinPrefix = ".pinned_";
 
     public string Root { get; } = root;
 
@@ -22,11 +29,15 @@ public sealed class CacheManager(AbsApiClient api, string root)
     public string GetItemDirectory(string itemId) => CachePaths.Within(Root, Path.Combine(Root, CachePaths.SafeId(itemId)));
 
     public string GetTrackPath(string itemId, AudioTrack track)
+        => CachePaths.Within(Root, Path.Combine(GetItemDirectory(itemId), TrackFileName(track)));
+
+    /// <summary>Dateiname eines Tracks: Index, Hash der Adresse ohne Server-Unterpfad, geprüfte Endung.</summary>
+    private static string TrackFileName(AudioTrack track)
     {
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CacheKey(track.ContentUrl))))[..16];
         var ext = CachePaths.SafeExtension(track.Metadata?.Ext, track.MimeType);
         var index = Math.Clamp(track.Index, 0, 999);
-        return CachePaths.Within(Root, Path.Combine(GetItemDirectory(itemId), $"{index:D3}_{key}{ext}"));
+        return $"{index:D3}_{key}{ext}";
     }
 
     public bool IsTrackComplete(string itemId, AudioTrack track)
@@ -77,6 +88,155 @@ public sealed class CacheManager(AbsApiClient api, string root)
             .OfType<LocalItem>()
             .OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
+
+    // ---------- Podcast-Folgen (#76) ----------
+
+    private string EpisodeFilePath(string itemId, string episodeId)
+        => CachePaths.Within(Root, Path.Combine(GetItemDirectory(itemId), EpisodeFilePrefix + CachePaths.SafeId(episodeId) + ".json"));
+
+    private string EpisodePinPath(string itemId, string episodeId)
+        => CachePaths.Within(Root, Path.Combine(GetItemDirectory(itemId), EpisodePinPrefix + CachePaths.SafeId(episodeId)));
+
+    /// <summary>Speichert die Daten einer heruntergeladenen Folge (<see cref="LocalItem.EpisodeId"/> gesetzt).</summary>
+    public void SaveLocalEpisode(LocalItem episode)
+    {
+        if (episode.EpisodeId is not { } episodeId) throw new ArgumentException("Keine Folge.", nameof(episode));
+        try
+        {
+            var path = EpisodeFilePath(episode.LibraryItemId, episodeId);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(episode, AbsApiClient.Json));
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Lokale Daten der Folge konnten nicht gespeichert werden", ex);
+        }
+    }
+
+    public LocalItem? GetLocalEpisode(string itemId, string episodeId)
+    {
+        try
+        {
+            var path = EpisodeFilePath(itemId, episodeId);
+            if (!File.Exists(path)) return null;
+            var local = JsonSerializer.Deserialize<LocalItem>(File.ReadAllText(path), AbsApiClient.Json);
+            // Die Datei gehört zu genau dieser Folge; was anderes darin steht, wird nicht abgespielt.
+            return local is not null && local.LibraryItemId == itemId && local.EpisodeId == episodeId ? local : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Lokale Daten der Folge {episodeId} unlesbar", ex);
+            return null;
+        }
+    }
+
+    /// <summary>Alle Folgen mit lokalen Daten, über alle Podcasts.</summary>
+    public IReadOnlyList<LocalItem> ListLocalEpisodes()
+    {
+        if (!Directory.Exists(Root)) return [];
+        var result = new List<LocalItem>();
+        foreach (var dir in new DirectoryInfo(Root).EnumerateDirectories())
+        {
+            foreach (var file in dir.EnumerateFiles(EpisodeFilePrefix + "*.json"))
+            {
+                try
+                {
+                    var local = JsonSerializer.Deserialize<LocalItem>(File.ReadAllText(file.FullName), AbsApiClient.Json);
+                    // Nur Folgen, deren Kennungen wieder genau auf diese Datei führen.
+                    if (local?.EpisodeId is { } episodeId && PlaylistRules.IsPlainId(local.LibraryItemId) &&
+                        PlaylistRules.IsPlainId(episodeId) &&
+                        string.Equals(EpisodeFilePath(local.LibraryItemId, episodeId), file.FullName, StringComparison.OrdinalIgnoreCase))
+                        result.Add(local);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Lokale Daten einer Folge unlesbar ({file.Name})", ex);
+                }
+            }
+        }
+        return result.OrderBy(e => e.Author ?? "", StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => e.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    public bool IsEpisodePinned(string itemId, string episodeId) => File.Exists(EpisodePinPath(itemId, episodeId));
+
+    public void SetEpisodePinned(string itemId, string episodeId, bool pinned)
+    {
+        var marker = EpisodePinPath(itemId, episodeId);
+        if (pinned)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+            File.WriteAllText(marker, DateTimeOffset.UtcNow.ToString("O"));
+        }
+        else if (File.Exists(marker))
+        {
+            File.Delete(marker);
+        }
+    }
+
+    /// <summary>Größe einer Folge auf der Platte: ihre Tracks samt .map.</summary>
+    public long GetEpisodeSize(LocalItem episode)
+        => episode.Tracks.Sum(t =>
+        {
+            var path = GetTrackPath(episode.LibraryItemId, t);
+            return (File.Exists(path) ? new FileInfo(path).Length : 0) +
+                   (File.Exists(CachingHttpStream.MapPathFor(path)) ? new FileInfo(CachingHttpStream.MapPathFor(path)).Length : 0);
+        });
+
+    /// <summary>
+    /// Entfernt eine Folge: ihre Tracks samt .map, ihre Daten und die Anheftung. Andere Folgen und der Ordner des
+    /// Podcasts bleiben; ist er danach leer, verschwindet er.
+    /// </summary>
+    public void DeleteEpisode(string itemId, string episodeId)
+    {
+        var dir = GetItemDirectory(itemId);
+        if (!Directory.Exists(dir)) return;
+        var local = GetLocalEpisode(itemId, episodeId);
+        foreach (var track in local?.Tracks ?? [])
+        {
+            var path = GetTrackPath(itemId, track);
+            File.Delete(path);
+            File.Delete(CachingHttpStream.MapPathFor(path));
+        }
+        File.Delete(EpisodeFilePath(itemId, episodeId));
+        File.Delete(EpisodePinPath(itemId, episodeId));
+        if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
+    }
+
+    /// <summary>
+    /// Dateien, die in einem Ordner bleiben müssen, weil dort Folgen angeheftet sind: deren Tracks samt .map, ihre
+    /// Daten und Markierungen. Leer, wenn keine Folge angeheftet ist.
+    /// </summary>
+    private HashSet<string> PinnedEpisodeFiles(DirectoryInfo dir)
+    {
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var marker in dir.EnumerateFiles(EpisodePinPrefix + "*"))
+        {
+            keep.Add(marker.FullName);
+            var data = Path.Combine(dir.FullName, EpisodeFilePrefix + marker.Name[EpisodePinPrefix.Length..] + ".json");
+            keep.Add(data);
+            try
+            {
+                if (!File.Exists(data)) continue;
+                var local = JsonSerializer.Deserialize<LocalItem>(File.ReadAllText(data), AbsApiClient.Json);
+                foreach (var track in local?.Tracks ?? [])
+                {
+                    var path = Path.Combine(dir.FullName, TrackFileName(track));
+                    keep.Add(path);
+                    keep.Add(CachingHttpStream.MapPathFor(path));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Unlesbare Daten: lieber den ganzen Ordner behalten als eine heruntergeladene Folge löschen.
+                Log.Error($"Angeheftete Folge in {dir.Name} unlesbar, Ordner bleibt", ex);
+                keep.Add("*");
+            }
+        }
+        return keep;
     }
 
     public bool IsPinned(string itemId) => File.Exists(Path.Combine(GetItemDirectory(itemId), PinnedFileName));
@@ -159,6 +319,13 @@ public sealed class CacheManager(AbsApiClient api, string root)
             {
                 if (total <= maxBytes) break;
                 if (d.Pinned || protectedDirs.Contains(d.Dir.FullName)) continue;
+                var keep = PinnedEpisodeFiles(d.Dir);
+                if (keep.Count > 0)
+                {
+                    // Podcast mit heruntergeladenen Folgen (#76): nur die übrigen, gestreamten Dateien entfernen.
+                    if (!keep.Contains("*")) total -= DeleteExcept(d.Dir, keep);
+                    continue;
+                }
                 try
                 {
                     d.Dir.Delete(recursive: true);
@@ -175,6 +342,28 @@ public sealed class CacheManager(AbsApiClient api, string root)
         {
             Log.Error("Cache-Bereinigung fehlgeschlagen", ex);
         }
+    }
+
+    /// <summary>Löscht in einem Ordner alle Dateien außer <paramref name="keep"/>; gibt die freigewordene Größe zurück.</summary>
+    private static long DeleteExcept(DirectoryInfo dir, HashSet<string> keep)
+    {
+        long freed = 0;
+        foreach (var file in dir.EnumerateFiles("*", SearchOption.AllDirectories).ToList())
+        {
+            if (keep.Contains(file.FullName)) continue;
+            try
+            {
+                var size = file.Length;
+                file.Delete();
+                freed += size;
+            }
+            catch (IOException)
+            {
+                // Datei in Benutzung – überspringen
+            }
+        }
+        if (freed > 0) Log.Info($"Cache bereinigt: {dir.Name} ohne heruntergeladene Folgen ({freed / 1024 / 1024} MB)");
+        return freed;
     }
 
     /// <summary>Leert den Streaming-Cache; Downloads bleiben erhalten.</summary>

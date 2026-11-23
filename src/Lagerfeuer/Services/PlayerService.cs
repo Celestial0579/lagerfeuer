@@ -277,22 +277,27 @@ public sealed partial class PlayerService : ObservableObject
             {
                 return await _api.StartPlaybackAsync(itemId, _settings.DeviceId, episodeId);
             }
-            catch (AbsApiException ex) when (ex.ServerUnreachable && episodeId is null && CanPlayOffline(itemId))
+            catch (AbsApiException ex) when (ex.ServerUnreachable && CanPlayOffline(itemId, episodeId))
             {
-                Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {itemId} offline.");
+                Log.Info($"Server nicht erreichbar ({ex.Message}) – spiele {ProgressStore.Key(itemId, episodeId)} offline.");
             }
         }
 
-        var local = _cache.GetLocalItem(itemId);
+        // Bücher aus item.json, heruntergeladene Podcast-Folgen aus ihren eigenen Daten im Podcast-Ordner (#76).
+        var local = episodeId is null ? _cache.GetLocalItem(itemId) : _cache.GetLocalEpisode(itemId, episodeId);
         if (local is null || !_cache.IsAvailableOffline(local))
-            throw new AbsApiException("Offline nicht verfügbar: Dieses Buch ist nicht vollständig heruntergeladen.");
+            throw new AbsApiException(episodeId is null
+                ? "Offline nicht verfügbar: Dieses Buch ist nicht vollständig heruntergeladen."
+                : "Offline nicht verfügbar: Diese Folge ist nicht heruntergeladen.");
 
-        var progress = _progress.Get(itemId);
+        var progress = _progress.Get(itemId, episodeId);
         var start = progress is { IsFinished: false } ? progress.CurrentTime : 0;
         var session = local.ToOfflineSession("local-" + Guid.NewGuid().ToString("N"), start);
         _localSession = new LocalSession
         {
             LibraryItemId = itemId,
+            EpisodeId = episodeId,
+            MediaType = episodeId is null ? "book" : "podcast",
             DisplayTitle = local.Title,
             DisplayAuthor = local.Author,
             Duration = local.Duration,
@@ -305,8 +310,9 @@ public sealed partial class PlayerService : ObservableObject
         return session;
     }
 
-    private bool CanPlayOffline(string itemId)
-        => _cache.GetLocalItem(itemId) is { } local && _cache.IsAvailableOffline(local);
+    private bool CanPlayOffline(string itemId, string? episodeId = null)
+        => (episodeId is null ? _cache.GetLocalItem(itemId) : _cache.GetLocalEpisode(itemId, episodeId)) is { } local &&
+           _cache.IsAvailableOffline(local);
 
     public void Play()
     {
@@ -867,6 +873,6 @@ public sealed partial class PlayerService : ObservableObject
         local.TimeListening = Math.Round(local.TimeListening + listened, 1);
         local.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         _localSessions.Upsert(local);
-        ProgressSynced?.Invoke(this, (local.LibraryItemId, null, current, local.Duration));
+        ProgressSynced?.Invoke(this, (local.LibraryItemId, local.EpisodeId, current, local.Duration));
     }
 }

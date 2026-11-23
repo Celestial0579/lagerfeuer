@@ -65,6 +65,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="2">
                                 <TextBlock Style="{StaticResource LfBookTitleStyle}" Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" />
@@ -78,9 +79,27 @@
                                     Maximum="100"
                                     Value="{x:Bind ProgressPercent, Mode=OneWay}"
                                     Visibility="{x:Bind HasProgress, Mode=OneWay}" />
+                                <!--  Download der Folge (#76)  -->
+                                <ProgressBar
+                                    Width="240"
+                                    HorizontalAlignment="Left"
+                                    Foreground="{ThemeResource LfSparkBrush}"
+                                    Maximum="100"
+                                    Value="{x:Bind DownloadPercent, Mode=OneWay}"
+                                    Visibility="{x:Bind IsDownloading, Mode=OneWay}" />
                             </StackPanel>
                             <Button
                                 Grid.Column="1"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{x:Bind DownloadTooltip, Mode=OneWay}"
+                                Click="OnDownloadEpisode"
+                                IsEnabled="{x:Bind CanUseDownload, Mode=OneWay}"
+                                Tag="{x:Bind Id}"
+                                ToolTipService.ToolTip="{x:Bind DownloadTooltip, Mode=OneWay}">
+                                <FontIcon FontSize="14" Glyph="{x:Bind DownloadGlyph, Mode=OneWay}" />
+                            </Button>
+                            <Button
+                                Grid.Column="2"
                                 VerticalAlignment="Center"
                                 AutomationProperties.Name="Zur Wiedergabeliste"
                                 Click="OnAddToPlaylist"
@@ -89,7 +108,7 @@
                                 <FontIcon FontSize="14" Glyph="&#xE90B;" />
                             </Button>
                             <Button
-                                Grid.Column="2"
+                                Grid.Column="3"
                                 VerticalAlignment="Center"
                                 Click="OnPlayEpisode"
                                 Style="{StaticResource AccentButtonStyle}"

@@ -71,7 +71,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Springen lädt gezielt ab der neuen Stelle nach, der Rest wird im Hintergrund vorgeladen, ebenso der nächste Track.
   - Das Cache-Limit ist einstellbar; die am längsten nicht gehörten Bücher werden zuerst entfernt.
 - **Offline**
-  - Bücher **herunterladen**. Sie sind dann angeheftet, und die Cache-Bereinigung lässt sie in Ruhe.
+  - Bücher und Podcast-Folgen **herunterladen**. Sie sind dann angeheftet, und die Cache-Bereinigung lässt sie in Ruhe; bei einem Podcast räumt sie nur die gestreamten, nicht heruntergeladenen Folgen weg.
   - Seite **Downloads**.
   - Die Admin-Berechtigung „Download“ wird respektiert.
   - **Wiedergabe ohne Server:** Ist der Server nicht erreichbar, spielen heruntergeladene Bücher von der Platte. Das gilt auch, wenn ein Proxy davor 502, 503 oder 504 meldet. Offline gehörte Zeit wird gespeichert und hochgeladen, sobald der Server wieder da ist (`/api/session/local-all`).
@@ -196,7 +196,6 @@ Vorbereitet, braucht noch eine Entscheidung:
   - Fehlt noch: die Einreichung als Pull Request bei [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
 
 Ideen für später:
-- Podcast-Folgen herunterladen (offline zunächst nur Bücher).
 - Sammlungen und Playlists.
 - Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
