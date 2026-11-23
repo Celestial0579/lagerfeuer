@@ -252,6 +252,9 @@ public sealed partial class LibraryPage : Page
         BooksGrid.IsItemClickEnabled = !on;
         SelectionBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         ViewSelector.Visibility = !on && LibraryViews.ShowSelector(_library?.MediaType) ? Visibility.Visible : Visibility.Collapsed;
+        // Die Befehle brauchen den Platz von Filter und Sortierung; eine neue Sortierung lüde die Liste ohnehin neu.
+        FilterBox.Visibility = !on && !IsPodcastLibrary ? Visibility.Visible : Visibility.Collapsed;
+        SortBox.Visibility = DescToggle.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
         UpdateSelection();
     }
