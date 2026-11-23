@@ -145,6 +145,8 @@ public partial class App : Application
             {
                 User.Bookmarks = user.Bookmarks;
                 RaiseBookmarksChanged();
+                // Geänderte Rechte gleich übernehmen, nicht erst nach einem 403 (#81).
+                if (CollectionRules.TakeRights(User, user)) Views.PlaylistUi.NotifyCollectionRightsChanged();
             }
         });
         MainWindow = new MainWindow();

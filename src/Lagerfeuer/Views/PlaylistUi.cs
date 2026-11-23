@@ -318,7 +318,7 @@ public static class PlaylistUi
         {
             await App.RefreshRightsAsync();
             App.MainWindow.ShowError($"{what}: Dafür fehlt dir am Server inzwischen das Recht.");
-            CollectionRightsChanged?.Invoke(null, EventArgs.Empty);
+            NotifyCollectionRightsChanged();
         }
         else
         {
@@ -328,4 +328,7 @@ public static class PlaylistUi
 
     /// <summary>Nach einem 403 neu geholte Rechte – offene Seiten passen ihre Knöpfe an.</summary>
     public static event EventHandler? CollectionRightsChanged;
+
+    /// <summary>Rechte haben sich geändert (403 oder Live-Meldung, #81): offene Seiten passen ihre Knöpfe an.</summary>
+    public static void NotifyCollectionRightsChanged() => CollectionRightsChanged?.Invoke(null, EventArgs.Empty);
 }

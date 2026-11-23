@@ -41,7 +41,18 @@ public sealed partial class CollectionPage : Page
         InitializeComponent();
         List.ItemsSource = _entries;
         App.CollectionChanged += OnCollectionChanged;
-        Unloaded += (_, _) => App.CollectionChanged -= OnCollectionChanged;
+        PlaylistUi.CollectionRightsChanged += OnRightsChanged;
+        Unloaded += (_, _) =>
+        {
+            App.CollectionChanged -= OnCollectionChanged;
+            PlaylistUi.CollectionRightsChanged -= OnRightsChanged;
+        };
+    }
+
+    /// <summary>Rechte geändert (#81): Knöpfe neu, solange keine eigene Änderung läuft (die zeigt danach ohnehin neu).</summary>
+    private void OnRightsChanged(object? sender, EventArgs e)
+    {
+        if (_collection is not null && _busy == 0) Show(_collection);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

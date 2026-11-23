@@ -52,8 +52,16 @@ public sealed partial class LibraryPage : Page
     {
         InitializeComponent();
         // Die Seite bleibt im Speicher (NavigationCacheMode): bei jedem Zeigen an- und beim Verlassen abmelden.
-        Loaded += (_, _) => App.CollectionChanged += OnCollectionChanged;
-        Unloaded += (_, _) => App.CollectionChanged -= OnCollectionChanged;
+        Loaded += (_, _) =>
+        {
+            App.CollectionChanged += OnCollectionChanged;
+            PlaylistUi.CollectionRightsChanged += OnRightsChanged;
+        };
+        Unloaded += (_, _) =>
+        {
+            App.CollectionChanged -= OnCollectionChanged;
+            PlaylistUi.CollectionRightsChanged -= OnRightsChanged;
+        };
     }
 
     private bool IsPodcastLibrary => _library?.MediaType == "podcast";
@@ -291,6 +299,13 @@ public sealed partial class LibraryPage : Page
     private static string NoCollectionsText() => App.CollectionRights.CanEdit
         ? "Noch keine Sammlungen. Eine neue legst du auf der Seite eines Buchs an: „Zur Sammlung“, dann „Neue Sammlung …“."
         : "Noch keine Sammlungen.";
+
+    /// <summary>Rechte geändert (#81): „Zur Sammlung …“ und der Hinweis ohne Sammlungen folgen ihnen.</summary>
+    private void OnRightsChanged(object? sender, EventArgs e)
+    {
+        SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        if (CollectionsGrid.Visibility == Visibility.Visible) NoResults.Text = NoCollectionsText();
+    }
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
     {
