@@ -218,7 +218,9 @@ public sealed partial class PlayerService : ObservableObject
             {
                 // Buchdaten lokal sichern: ist alles gehört/geladen, geht es später auch offline.
                 if (_cache.GetLocalItem(itemId) is null) _cache.SaveLocalItem(LocalItem.FromSession(session));
-                _cache.EnforceLimit((long)_settings.CacheLimitGb * 1024 * 1024 * 1024, [itemId]);
+                // Ein Array statt [itemId]: Eine Collection-Expression auf IReadOnlyCollection hat keinen festen Typ,
+                // das meldet CsWinRT als Warnung (Trimming/AOT).
+                _cache.EnforceLimit((long)_settings.CacheLimitGb * 1024 * 1024 * 1024, new[] { itemId });
             }
 
             ItemId = itemId;
