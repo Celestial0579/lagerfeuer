@@ -449,6 +449,13 @@ public sealed partial class MainWindow : Window
 
     public void OpenCollection(string collectionId) => ContentFrame.Navigate(typeof(CollectionPage), collectionId);
 
+    /// <summary>Zur Bibliothek wechseln (etwa nachdem eine Sammlung gelöscht wurde, #82); unbekannt: zur Startseite.</summary>
+    public void OpenLibrary(string? libraryId)
+    {
+        if (App.Libraries.FirstOrDefault(l => l.Id == libraryId) is { } lib) ContentFrame.Navigate(typeof(LibraryPage), lib);
+        else ContentFrame.Navigate(typeof(HomePage));
+    }
+
     public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
 
     public void OpenSeries(string libraryId, string seriesId, string name)

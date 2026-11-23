@@ -49,6 +49,13 @@ public sealed partial class CollectionPage : Page
         };
     }
 
+    /// <summary>Die Sammlung gibt es nicht mehr: zurück, sonst zur Bibliothek (#82).</summary>
+    private void Leave()
+    {
+        if (Frame.CanGoBack) Frame.GoBack();
+        else App.MainWindow.OpenLibrary(_collection?.LibraryId);
+    }
+
     /// <summary>Rechte geändert (#81): Knöpfe neu, solange keine eigene Änderung läuft (die zeigt danach ohnehin neu).</summary>
     private void OnRightsChanged(object? sender, EventArgs e)
     {
@@ -64,11 +71,13 @@ public sealed partial class CollectionPage : Page
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
     {
-        if (change.CollectionId != _collectionId || _busy > 0) return;
+        // Nur solange die Seite noch angezeigt wird: Nach dem eigenen Löschen kann die Live-Meldung dazu erst
+        // ankommen, wenn Leave() schon zurückgegangen ist – sonst ginge es ein zweites Mal zurück.
+        if (change.CollectionId != _collectionId || _busy > 0 || !ReferenceEquals(Frame?.Content, this)) return;
         if (change.Kind == CollectionChangeKind.Removed)
         {
             App.MainWindow.ShowInfo("Diese Sammlung wurde gelöscht.");
-            if (Frame.CanGoBack) Frame.GoBack();
+            Leave();
             return;
         }
         _ = LoadAsync();
@@ -223,7 +232,7 @@ public sealed partial class CollectionPage : Page
 
     private async void OnRename(object sender, RoutedEventArgs e)
     {
-        if (_collection is null) return;
+        if (_collection is null || !App.CollectionRights.CanEdit) return;
         var current = CollectionRules.DisplayName(_collection);
         if (await PlaylistUi.AskNameAsync(XamlRoot, "Sammlung umbenennen", "Umbenennen", current, "Name der Sammlung") is not { } name) return;
         _busy++;
@@ -285,7 +294,7 @@ public sealed partial class CollectionPage : Page
 
     private async void OnDelete(object sender, RoutedEventArgs e)
     {
-        if (_collection is null) return;
+        if (_collection is null || !App.CollectionRights.CanDelete) return;
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -304,7 +313,7 @@ public sealed partial class CollectionPage : Page
         try
         {
             await App.Api.DeleteCollectionAsync(_collection.Id);
-            if (Frame.CanGoBack) Frame.GoBack();
+            Leave();
         }
         catch (Exception ex)
         {

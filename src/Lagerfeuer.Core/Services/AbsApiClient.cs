@@ -427,10 +427,12 @@ public sealed class AbsApiClient : IDisposable
         => SendJsonAsync<Collection>(HttpMethod.Patch, $"api/collections/{Seg(collectionId)}", new { description }, ct);
 
     /// <summary>
-    /// Neue Reihenfolge. PATCH mit einer Bücherliste ordnet am Server alle Bücher der Sammlung nach dieser Liste;
-    /// Bücher, die darin fehlen, rutschen nach vorn (Audiobookshelf 2.37). Deshalb wird vorher der aktuelle Stand
-    /// geholt. Hat jemand inzwischen Bücher hinzugefügt oder entfernt, wird nichts geschickt und der neue Stand
-    /// zurückgegeben.
+    /// Neue Reihenfolge. PATCH mit einer Bücherliste ordnet am Server die Bücher der Sammlung nach dieser Liste;
+    /// Bücher, die darin fehlen, rutschen nach vorn. Deshalb wird vorher der aktuelle Stand geholt: Hat jemand
+    /// inzwischen Bücher hinzugefügt oder entfernt, wird nichts geschickt und der neue Stand zurückgegeben.
+    /// Entfernt jemand genau zwischen diesem Lesen und dem PATCH ein Buch, geht es noch in der Liste mit. Das holt es
+    /// nicht zurück: Seit Audiobookshelf 2.5 ordnet PATCH nur vorhandene Bücher um und fügt keine hinzu (bis 2.4
+    /// ersetzte es die Liste), und Lagerfeuer verlangt mindestens 2.26 (#82).
     /// </summary>
     public async Task<CollectionReorderResult> ReorderCollectionAsync(string collectionId, IReadOnlyList<string> order,
         CancellationToken ct = default)
