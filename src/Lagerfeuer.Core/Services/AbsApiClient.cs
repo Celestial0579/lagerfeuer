@@ -346,6 +346,26 @@ public sealed class AbsApiClient : IDisposable
     public Task DeletePlaylistAsync(string playlistId, CancellationToken ct = default)
         => SendNoContentAsync(HttpMethod.Delete, $"api/playlists/{Seg(playlistId)}", null, ct);
 
+    /// <summary>Neue Wiedergabeliste mit mehreren Büchern (#65).</summary>
+    public Task<Playlist> CreatePlaylistAsync(string libraryId, string name, IReadOnlyList<string> bookIds, CancellationToken ct = default)
+    {
+        Seg(libraryId); CheckBatch(bookIds);
+        return SendJsonAsync<Playlist>(HttpMethod.Post, "api/playlists",
+            new { libraryId, name, items = PlaylistRules.OrderBody(bookIds.Select(id => new PlaylistItem { LibraryItemId = id })) }, ct);
+    }
+
+    /// <summary>
+    /// Mehrere Bücher auf einmal in eine Wiedergabeliste (#65). Schon enthaltene übergeht der Server; gibt es eins
+    /// nicht mehr, lehnt er den ganzen Aufruf ab (400).
+    /// </summary>
+    public Task<Playlist> AddBooksToPlaylistAsync(string playlistId, IReadOnlyList<string> bookIds, CancellationToken ct = default)
+    {
+        var path = $"api/playlists/{Seg(playlistId)}/batch/add";
+        CheckBatch(bookIds);
+        return SendJsonAsync<Playlist>(HttpMethod.Post, path,
+            new { items = PlaylistRules.OrderBody(bookIds.Select(id => new PlaylistItem { LibraryItemId = id })) }, ct);
+    }
+
     public Task<Playlist> AddToPlaylistAsync(string playlistId, string itemId, string? episodeId, CancellationToken ct = default)
     {
         var path = $"api/playlists/{Seg(playlistId)}/item";
@@ -372,9 +392,31 @@ public sealed class AbsApiClient : IDisposable
         => SendJsonAsync<Collection>(HttpMethod.Get, $"api/collections/{Seg(collectionId)}", null, ct);
 
     public Task<Collection> CreateCollectionAsync(string libraryId, string name, string bookId, CancellationToken ct = default)
+        => CreateCollectionAsync(libraryId, name, [bookId], ct);
+
+    /// <summary>Neue Sammlung mit einem oder mehreren Büchern (#65). Audiobookshelf verlangt mindestens eins.</summary>
+    public Task<Collection> CreateCollectionAsync(string libraryId, string name, IReadOnlyList<string> bookIds, CancellationToken ct = default)
     {
-        Seg(libraryId); Seg(bookId);
-        return SendJsonAsync<Collection>(HttpMethod.Post, "api/collections", new { libraryId, name, books = new[] { bookId } }, ct);
+        Seg(libraryId); CheckBatch(bookIds);
+        return SendJsonAsync<Collection>(HttpMethod.Post, "api/collections", new { libraryId, name, books = bookIds }, ct);
+    }
+
+    /// <summary>
+    /// Mehrere Bücher auf einmal (#65). Bücher, die schon drin sind oder nicht zur Bibliothek der Sammlung gehören,
+    /// übergeht der Server still; was hinzugekommen ist, zeigt erst die Antwort (<see cref="BatchRules.Summarize"/>).
+    /// </summary>
+    public Task<Collection> AddBooksToCollectionAsync(string collectionId, IReadOnlyList<string> bookIds, CancellationToken ct = default)
+    {
+        var path = $"api/collections/{Seg(collectionId)}/batch/add";
+        CheckBatch(bookIds);
+        return SendJsonAsync<Collection>(HttpMethod.Post, path, new { books = bookIds }, ct);
+    }
+
+    /// <summary>Eine Auswahl für einen Sammel-Aufruf: nicht leer, höchstens <see cref="BatchRules.MaxItems"/>, nur schlichte IDs.</summary>
+    private static void CheckBatch(IReadOnlyList<string> ids)
+    {
+        if (ids.Count == 0 || ids.Count > BatchRules.MaxItems) throw new AbsApiException($"Bitte 1 bis {BatchRules.MaxItems} Einträge wählen.");
+        foreach (var id in ids) Seg(id);
     }
 
     public Task<Collection> RenameCollectionAsync(string collectionId, string name, CancellationToken ct = default)
