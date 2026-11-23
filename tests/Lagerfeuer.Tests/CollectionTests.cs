@@ -57,6 +57,44 @@ public class CollectionTests
     }
 
     [Fact]
+    public async Task Beschreibung_PatchNurMitBeschreibung()
+    {
+        var (api, handler, bodies) = Client();
+        using var _api = api;
+        await api.SetCollectionDescriptionAsync("c1", "Zeile 1\nZeile 2", Ct);
+        await api.SetCollectionDescriptionAsync("c1", "", Ct);
+        Assert.Equal([(HttpMethod.Patch, "/api/collections/c1"), (HttpMethod.Patch, "/api/collections/c1")], Calls(handler));
+        Assert.Equal("{\"description\":\"Zeile 1\\nZeile 2\"}", bodies[0]);
+        Assert.Equal("{\"description\":\"\"}", bodies[1]);
+    }
+
+    [Theory]
+    [InlineData("Neu", "", "Neu")]
+    [InlineData("  Neu  ", "", "Neu")]
+    [InlineData("A\r\nB", "", "A\nB")]       // Windows-Zeilenende
+    [InlineData("A\rB", "", "A\nB")]          // so liefert es ein WinUI-Textfeld
+    [InlineData("A\u0000B\u001bC\tD", "", "ABCD")] // Steuerzeichen fallen weg
+    [InlineData("", "Alt", "")]               // leeren entfernt die Beschreibung
+    [InlineData("   ", "Alt", "")]
+    public void Beschreibung_Bereinigt(string input, string current, string expected)
+        => Assert.Equal(expected, CollectionRules.NormalizeDescription(input, current));
+
+    [Theory]
+    [InlineData("Alt", "Alt")]
+    [InlineData(" Alt\r\n", "Alt")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void Beschreibung_Unveraendert_Null(string? input, string current)
+        => Assert.Null(CollectionRules.NormalizeDescription(input, current));
+
+    [Fact]
+    public void Beschreibung_Gekuerzt()
+    {
+        var lang = new string('x', PlaylistRules.MaxDescriptionLength + 50);
+        Assert.Equal(PlaylistRules.MaxDescriptionLength, CollectionRules.NormalizeDescription(lang, "")!.Length);
+    }
+
+    [Fact]
     public async Task Reihenfolge_GleicheBuecher_WirdGespeichert()
     {
         var (api, handler, bodies) = Client();
@@ -103,6 +141,8 @@ public class CollectionTests
         await Assert.ThrowsAsync<AbsApiException>(() => api.RemoveFromCollectionAsync("c1", id, Ct));
         await Assert.ThrowsAsync<AbsApiException>(() => api.CreateCollectionAsync("lib1", "x", id, Ct));
         await Assert.ThrowsAsync<AbsApiException>(() => api.ReorderCollectionAsync("c1", ["b1", id], Ct));
+        await Assert.ThrowsAsync<AbsApiException>(() => api.RenameCollectionAsync(id, "x", Ct));
+        await Assert.ThrowsAsync<AbsApiException>(() => api.SetCollectionDescriptionAsync(id, "x", Ct));
         Assert.Empty(handler.Requests);
     }
 

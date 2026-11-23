@@ -380,9 +380,15 @@ public sealed class AbsApiClient : IDisposable
     public Task<Collection> RenameCollectionAsync(string collectionId, string name, CancellationToken ct = default)
         => SendJsonAsync<Collection>(HttpMethod.Patch, $"api/collections/{Seg(collectionId)}", new { name }, ct);
 
+    /// <summary>Neue Beschreibung, bereinigt über <see cref="CollectionRules.NormalizeDescription"/>; leer entfernt sie.</summary>
+    public Task<Collection> SetCollectionDescriptionAsync(string collectionId, string description, CancellationToken ct = default)
+        => SendJsonAsync<Collection>(HttpMethod.Patch, $"api/collections/{Seg(collectionId)}", new { description }, ct);
+
     /// <summary>
-    /// Neue Reihenfolge. PATCH ersetzt die ganze Bücherliste; deshalb wird vorher der aktuelle Stand geholt. Hat
-    /// jemand inzwischen Bücher hinzugefügt oder entfernt, wird nichts geschickt und der neue Stand zurückgegeben.
+    /// Neue Reihenfolge. PATCH mit einer Bücherliste ordnet am Server alle Bücher der Sammlung nach dieser Liste;
+    /// Bücher, die darin fehlen, rutschen nach vorn (Audiobookshelf 2.37). Deshalb wird vorher der aktuelle Stand
+    /// geholt. Hat jemand inzwischen Bücher hinzugefügt oder entfernt, wird nichts geschickt und der neue Stand
+    /// zurückgegeben.
     /// </summary>
     public async Task<CollectionReorderResult> ReorderCollectionAsync(string collectionId, IReadOnlyList<string> order,
         CancellationToken ct = default)

@@ -28,7 +28,13 @@ public sealed partial class CollectionPage : Page
     private readonly ObservableCollection<CollectionEntry> _entries = [];
     private Collection? _collection;
     private string? _collectionId;
-    private bool _saving;
+
+    /// <summary>Eigene Änderungen, die gerade laufen. Solange lösen Live-Meldungen kein Neuladen aus.</summary>
+    private int _busy;
+
+    /// <summary>Reihenfolgen gehen nacheinander an den Server, in der Reihenfolge der Klicks.</summary>
+    private readonly SemaphoreSlim _orderLock = new(1, 1);
+    private int _ordersQueued;
 
     public CollectionPage()
     {
@@ -47,7 +53,7 @@ public sealed partial class CollectionPage : Page
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
     {
-        if (change.CollectionId != _collectionId || _saving) return;
+        if (change.CollectionId != _collectionId || _busy > 0) return;
         if (change.Kind == CollectionChangeKind.Removed)
         {
             App.MainWindow.ShowInfo("Diese Sammlung wurde gelöscht.");
@@ -87,7 +93,7 @@ public sealed partial class CollectionPage : Page
         TitleText.Text = CollectionRules.DisplayName(collection);
         DescriptionText.Text = CollectionRules.DisplayDescription(collection);
         DescriptionText.Visibility = DescriptionText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RenameButton.Visibility = rights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        RenameButton.Visibility = DescriptionButton.Visibility = rights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
         DeleteButton.Visibility = rights.CanDelete ? Visibility.Visible : Visibility.Collapsed;
         List.CanDragItems = List.CanReorderItems = List.AllowDrop = rights.CanEdit;
         _entries.Clear();
@@ -149,16 +155,28 @@ public sealed partial class CollectionPage : Page
         if (List.ContainerFromItem(_entries.FirstOrDefault(x => x.Id == entry.Id)) is ListViewItem container) container.Focus(FocusState.Keyboard);
     }
 
-    private void OnDragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args) => _ = SaveOrderAsync();
+    private void OnDragItemsCompleted(ListViewBase sender, Microsoft.UI.Xaml.Controls.DragItemsCompletedEventArgs args)
+    {
+        // Abgebrochenes Ziehen ändert nichts.
+        if (args.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.None) _ = SaveOrderAsync();
+    }
 
+    /// <summary>
+    /// Schickt die angezeigte Reihenfolge. Mehrere schnelle Verschiebungen gehen nacheinander hinaus, jede mit dem
+    /// Stand ihres Klicks; so überholt keine ältere Reihenfolge eine neuere am Server.
+    /// </summary>
     private async Task SaveOrderAsync()
     {
         if (_collectionId is null) return;
-        _saving = true;
+        var order = _entries.Select(x => x.Id).ToList();
+        _ordersQueued++;
+        _busy++;
+        await _orderLock.WaitAsync();
         try
         {
-            var result = await App.Api.ReorderCollectionAsync(_collectionId, _entries.Select(x => x.Id).ToList());
-            Show(result.Current);
+            var result = await App.Api.ReorderCollectionAsync(_collectionId, order);
+            // Wartet schon die nächste Verschiebung, bleibt deren Stand sichtbar, bis sie gespeichert ist.
+            if (!result.Saved || _ordersQueued == 1) Show(result.Current);
             if (!result.Saved)
                 App.MainWindow.ShowInfo("Die Sammlung wurde inzwischen geändert. Die neue Reihenfolge ist nicht gespeichert – hier ist der aktuelle Stand.");
         }
@@ -168,14 +186,16 @@ public sealed partial class CollectionPage : Page
         }
         finally
         {
-            _saving = false;
+            _ordersQueued--;
+            _busy--;
+            _orderLock.Release();
         }
     }
 
     private async void OnRemove(object sender, RoutedEventArgs e)
     {
         if (EntryOf(sender) is not { } entry || _collectionId is null || !App.CollectionRights.CanEdit) return;
-        _saving = true;
+        _busy++;
         try
         {
             Show(await App.Api.RemoveFromCollectionAsync(_collectionId, entry.Id));
@@ -186,7 +206,7 @@ public sealed partial class CollectionPage : Page
         }
         finally
         {
-            _saving = false;
+            _busy--;
         }
     }
 
@@ -195,7 +215,7 @@ public sealed partial class CollectionPage : Page
         if (_collection is null) return;
         var current = CollectionRules.DisplayName(_collection);
         if (await PlaylistUi.AskNameAsync(XamlRoot, "Sammlung umbenennen", "Umbenennen", current, "Name der Sammlung") is not { } name) return;
-        _saving = true;
+        _busy++;
         try
         {
             Show(await App.Api.RenameCollectionAsync(_collection.Id, name));
@@ -206,7 +226,49 @@ public sealed partial class CollectionPage : Page
         }
         finally
         {
-            _saving = false;
+            _busy--;
+        }
+    }
+
+    /// <summary>Beschreibung bearbeiten (#35). Leeren entfernt sie; der Text geht bereinigt an den Server.</summary>
+    private async void OnEditDescription(object sender, RoutedEventArgs e)
+    {
+        if (_collection is null || !App.CollectionRights.CanEdit) return;
+        var current = CollectionRules.DisplayDescription(_collection);
+        var box = new TextBox
+        {
+            Text = current,
+            MaxLength = PlaylistRules.MaxDescriptionLength,
+            PlaceholderText = "Beschreibung der Sammlung",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 160,
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Beschreibung bearbeiten",
+            Content = box,
+            PrimaryButtonText = "Speichern",
+            CloseButtonText = "Abbrechen",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (CollectionRules.NormalizeDescription(box.Text, current) is not { } description) return;
+        _busy++;
+        try
+        {
+            Show(await App.Api.SetCollectionDescriptionAsync(_collection.Id, description));
+        }
+        catch (Exception ex)
+        {
+            await HandleFailureAsync("Beschreibung nicht gespeichert", ex);
+        }
+        finally
+        {
+            _busy--;
         }
     }
 
@@ -227,7 +289,7 @@ public sealed partial class CollectionPage : Page
             DefaultButton = ContentDialogButton.Close, // Eingabetaste bricht ab
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        _saving = true;
+        _busy++;
         try
         {
             await App.Api.DeleteCollectionAsync(_collection.Id);
@@ -239,7 +301,7 @@ public sealed partial class CollectionPage : Page
         }
         finally
         {
-            _saving = false;
+            _busy--;
         }
     }
 }

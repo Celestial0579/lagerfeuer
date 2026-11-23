@@ -29,6 +29,19 @@ public static class CollectionRules
     public static string DisplayDescription(Collection c)
         => PlaylistRules.DisplayDescription(new Playlist { Description = c.Description });
 
+    /// <summary>
+    /// Bereinigt eine eingegebene Beschreibung: Zeilenumbrüche werden zu „\n“ (ein Textfeld unter Windows liefert
+    /// „\r“), sonstige Steuerzeichen entfallen, höchstens <see cref="PlaylistRules.MaxDescriptionLength"/> Zeichen.
+    /// Null heißt: nichts Neues zu speichern. Leer heißt: die Beschreibung entfernen.
+    /// </summary>
+    public static string? NormalizeDescription(string? input, string current)
+    {
+        var text = (input ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+        var chars = text.Where(c => c == '\n' || !char.IsControl(c)).ToArray();
+        var cleaned = PlaylistRules.Cut(new string(chars).Trim(), PlaylistRules.MaxDescriptionLength);
+        return cleaned == current ? null : cleaned;
+    }
+
     /// <summary>Nur Bücher mit schlichter ID, der Rest wird nicht angezeigt und nicht weitergegeben.</summary>
     public static List<LibraryItem> Books(Collection c) => c.Books.Where(b => PlaylistRules.IsPlainId(b.Id)).ToList();
 
@@ -36,8 +49,9 @@ public static class CollectionRules
 
     /// <summary>
     /// Enthält die Sammlung am Server genau die Bücher, die Lagerfeuer gerade zeigt? Nur dann darf die neue
-    /// Reihenfolge geschickt werden: PATCH ersetzt die ganze Liste, ein inzwischen hinzugefügtes oder
-    /// entferntes Buch ginge sonst verloren bzw. käme zurück.
+    /// Reihenfolge geschickt werden: Was der Server mit einer abweichenden Liste macht, hängt von seiner Version
+    /// ab (2.37 schiebt fehlende Bücher nach vorn). Ein inzwischen hinzugefügtes Buch landete sonst an falscher
+    /// Stelle.
     /// </summary>
     public static bool SameBooks(IEnumerable<string> shown, Collection fresh)
         => new HashSet<string>(shown).SetEquals(fresh.Books.Select(b => b.Id)) && fresh.Books.Count == shown.Count();

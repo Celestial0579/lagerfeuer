@@ -171,10 +171,13 @@
         <TextBlock
             x:Name="NoResults"
             Grid.Row="2"
+            MaxWidth="480"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             Text="Keine Treffer."
+            TextAlignment="Center"
+            TextWrapping="Wrap"
             Visibility="Collapsed" />
         <ProgressRing x:Name="LoadingRing" Grid.Row="2" IsActive="False" />
     </Grid>

@@ -152,6 +152,7 @@ public sealed partial class LibraryPage : Page
         SortPanel.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         NoResults.Visibility = Visibility.Collapsed;
+        NoResults.Text = view == LibraryViews.Collections ? NoCollectionsText() : "Keine Treffer.";
     }
 
     private async Task LoadSeriesAsync()
@@ -230,6 +231,11 @@ public sealed partial class LibraryPage : Page
             LoadingRing.IsActive = false;
         }
     }
+
+    /// <summary>Hinweis, wenn eine Bibliothek noch keine Sammlungen hat; wer darf, erfährt, wie er eine anlegt.</summary>
+    private static string NoCollectionsText() => App.CollectionRights.CanEdit
+        ? "Noch keine Sammlungen. Eine neue legst du auf der Seite eines Buchs an: „Zur Sammlung“, dann „Neue Sammlung …“."
+        : "Noch keine Sammlungen.";
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
     {

@@ -37,6 +37,12 @@
                         <TextBlock Text="Umbenennen" />
                     </StackPanel>
                 </Button>
+                <Button x:Name="DescriptionButton" Click="OnEditDescription">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE70F;" />
+                        <TextBlock Text="Beschreibung" />
+                    </StackPanel>
+                </Button>
                 <Button x:Name="DeleteButton" Click="OnDelete">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="14" Glyph="&#xE74D;" />
