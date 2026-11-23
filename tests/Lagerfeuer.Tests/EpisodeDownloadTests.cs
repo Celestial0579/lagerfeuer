@@ -196,6 +196,30 @@ public class EpisodeDownloadTests : IDisposable
     }
 
     [Fact]
+    public async Task Bereinigung_UnlesbareDatenEinerAngeheftetenFolge_BehaeltDenOrdner()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("pod", null, "ep1");
+        await WaitForEndAsync(downloads, "pod", "ep1");
+        await Task.Delay(200, Ct);
+        var dir = cache.GetItemDirectory("pod");
+        var track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep1")!.Tracks[0]);
+        var streamed = Path.Combine(dir, "002_gestreamt.mp3");
+        File.WriteAllBytes(streamed, [1, 2, 3]);
+        File.WriteAllText(Path.Combine(dir, "episode_ep1.json"), "{kaputt");
+
+        cache.EnforceLimit(0, []);
+
+        // Lieber den ganzen Ordner behalten als eine heruntergeladene Folge löschen.
+        Assert.True(File.Exists(track));
+        Assert.True(File.Exists(streamed));
+        Assert.True(cache.IsEpisodePinned("pod", "ep1"));
+    }
+
+    [Fact]
     public void Liste_IgnoriertFolgendatenDieNichtZumDateinamenPassen()
     {
         var (api, _) = CreateServer();
