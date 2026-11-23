@@ -68,6 +68,7 @@ public sealed partial class LibraryPage : Page
             _seriesLoaded = _authorsLoaded = false;
             HeaderText.Text = lib.Name;
             SearchBox.Text = "";
+            SetSelecting(false);
             SetupControls();
             ViewSelector.SelectedItem = BooksTab;
             ShowView("books");
@@ -89,6 +90,7 @@ public sealed partial class LibraryPage : Page
         // Podcast-Bibliotheken haben nur eine Ansicht: keine Reiterleiste, auch kein einzelnes „Bücher“ (#43).
         ViewSelector.Visibility = LibraryViews.ShowSelector(_library?.MediaType) ? Visibility.Visible : Visibility.Collapsed;
         FilterBox.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible; // Podcasts haben keinen Fortschrittsfilter
+        SelectToggle.Visibility = podcast ? Visibility.Collapsed : Visibility.Visible; // Mehrfachauswahl nur für Bücher (#65)
 
         var sorts = podcast ? PodcastSorts : BookSorts;
         SortBox.ItemsSource = sorts;
@@ -145,6 +147,7 @@ public sealed partial class LibraryPage : Page
 
     private void ShowView(string view)
     {
+        if (view != "books") SetSelecting(false);
         BooksGrid.Visibility = view == "books" ? Visibility.Visible : Visibility.Collapsed;
         SeriesGrid.Visibility = view == "series" ? Visibility.Visible : Visibility.Collapsed;
         AuthorsGrid.Visibility = view == "authors" ? Visibility.Visible : Visibility.Collapsed;
@@ -231,6 +234,58 @@ public sealed partial class LibraryPage : Page
             LoadingRing.IsActive = false;
         }
     }
+
+    // ---------- Mehrere Bücher auf einmal (#65) ----------
+
+    private void OnSelectToggle(object sender, RoutedEventArgs e) => SetSelecting(SelectToggle.IsChecked == true);
+
+    private void OnSelectionDone(object sender, RoutedEventArgs e) => SetSelecting(false);
+
+    /// <summary>
+    /// Auswahlmodus: Kacheln mit Kontrollkästchen (Klick, Leertaste) statt Öffnen per Klick; statt der Reiter
+    /// stehen die Befehle für die Auswahl da. Beim Verlassen ist die Auswahl weg.
+    /// </summary>
+    private void SetSelecting(bool on)
+    {
+        SelectToggle.IsChecked = on;
+        BooksGrid.SelectionMode = on ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
+        BooksGrid.IsItemClickEnabled = !on;
+        SelectionBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        ViewSelector.Visibility = !on && LibraryViews.ShowSelector(_library?.MediaType) ? Visibility.Visible : Visibility.Collapsed;
+        // Die Befehle brauchen den Platz von Filter und Sortierung; eine neue Sortierung lüde die Liste ohnehin neu.
+        FilterBox.Visibility = !on && !IsPodcastLibrary ? Visibility.Visible : Visibility.Collapsed;
+        SortBox.Visibility = DescToggle.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSelection();
+    }
+
+    private void OnBooksSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelection();
+
+    /// <summary>Die ausgewählten Bücher als schlichte IDs; null bei mehr als <see cref="BatchRules.MaxItems"/>.</summary>
+    private List<string>? SelectedIds()
+        => BatchRules.Ids(BooksGrid.SelectedItems.OfType<BookItemViewModel>().Where(b => !b.Item.IsPodcast).Select(b => b.Id));
+
+    private void UpdateSelection()
+    {
+        var count = BooksGrid.SelectedItems.Count;
+        var ids = SelectedIds();
+        SelectionText.Text = (count == 1 ? "1 Buch ausgewählt" : $"{count} Bücher ausgewählt")
+            + (ids is null ? $" – höchstens {BatchRules.MaxItems} auf einmal" : "");
+        SelectionCollectionButton.IsEnabled = SelectionPlaylistButton.IsEnabled = ids is { Count: > 0 };
+    }
+
+    /// <summary>Ziel der Befehle: Bibliothek und Auswahl, wie sie beim Öffnen des Menüs sind.</summary>
+    private (string LibraryId, IReadOnlyList<string> BookIds)? SelectionTarget()
+        => _library is not null && SelectedIds() is { Count: > 0 } ids ? (_library.Id, ids) : null;
+
+    private void OnSelectionToCollection(object sender, RoutedEventArgs e)
+    {
+        if (!App.CollectionRights.CanEdit) return;
+        PlaylistUi.CreateBatchCollectionFlyout(SelectionTarget, XamlRoot, () => SetSelecting(false)).ShowAt((FrameworkElement)sender);
+    }
+
+    private void OnSelectionToPlaylist(object sender, RoutedEventArgs e)
+        => PlaylistUi.CreateBatchPlaylistFlyout(SelectionTarget, XamlRoot, () => SetSelecting(false)).ShowAt((FrameworkElement)sender);
 
     /// <summary>Hinweis, wenn eine Bibliothek noch keine Sammlungen hat; wer darf, erfährt, wie er eine anlegt.</summary>
     private static string NoCollectionsText() => App.CollectionRights.CanEdit

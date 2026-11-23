@@ -36,6 +36,28 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <!--  Auswahl mehrerer Bücher (#65): ersetzt die Reiter, solange der Auswahlmodus an ist.  -->
+            <StackPanel
+                x:Name="SelectionBar"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="Collapsed">
+                <TextBlock x:Name="SelectionText" MinWidth="150" VerticalAlignment="Center" />
+                <Button x:Name="SelectionCollectionButton" Click="OnSelectionToCollection" IsEnabled="False">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE8F1;" />
+                        <TextBlock Text="Zur Sammlung …" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="SelectionPlaylistButton" Click="OnSelectionToPlaylist" IsEnabled="False">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE90B;" />
+                        <TextBlock Text="Zur Wiedergabeliste …" />
+                    </StackPanel>
+                </Button>
+                <Button Click="OnSelectionDone" Content="Fertig" />
+            </StackPanel>
             <SelectorBar x:Name="ViewSelector" SelectionChanged="OnViewChanged">
                 <SelectorBarItem x:Name="BooksTab" IsSelected="True" Tag="books" Text="Bücher" />
                 <SelectorBarItem x:Name="SeriesTab" Tag="series" Text="Serien" />
@@ -48,6 +70,13 @@
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="8">
+                <ToggleButton
+                    x:Name="SelectToggle"
+                    AutomationProperties.Name="Mehrere Bücher auswählen"
+                    Click="OnSelectToggle"
+                    ToolTipService.ToolTip="Mehrere Bücher auswählen">
+                    <FontIcon FontSize="14" Glyph="&#xE762;" />
+                </ToggleButton>
                 <ComboBox x:Name="FilterBox" MinWidth="150" SelectionChanged="OnQueryChanged" ToolTipService.ToolTip="Filter" />
                 <ComboBox x:Name="SortBox" MinWidth="180" SelectionChanged="OnQueryChanged" ToolTipService.ToolTip="Sortierung" />
                 <ToggleButton x:Name="DescToggle" Click="OnQueryChanged" ToolTipService.ToolTip="Absteigend sortieren">
@@ -63,6 +92,7 @@
             IncrementalLoadingThreshold="3"
             IsItemClickEnabled="True"
             ItemClick="OnItemClick"
+            SelectionChanged="OnBooksSelectionChanged"
             SelectionMode="None">
             <GridView.ItemTemplate>
                 <DataTemplate x:DataType="vm:BookItemViewModel">

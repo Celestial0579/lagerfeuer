@@ -57,6 +57,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Buchseite mit Beschreibung, Kapiteln, Fortschritt, **Lesezeichen**, Links zu Autor und Serie, „Als beendet markieren“.
   - **Wiedergabelisten:** eigene Listen aus Büchern und Podcast-Folgen anlegen, umbenennen, ordnen und nacheinander abspielen; eine ganze Liste auf einmal herunterladen.
   - **Sammlungen:** Bücherlisten, die alle Nutzer der Bibliothek sehen. Anlegen, umbenennen, beschreiben, ordnen und Bücher entfernen mit dem Recht „Aktualisieren“, eine Sammlung löschen mit „Löschen“; „Alle abspielen“ in ihrer Reihenfolge.
+  - **Mehrere Bücher auf einmal** in eine Sammlung oder Wiedergabeliste: in der Bibliothek „Mehrere Bücher auswählen“, dann „Zur Sammlung …“ oder „Zur Wiedergabeliste …“.
 - **Podcasts**
   - Podcast-Bibliotheken, Podcast-Seite mit allen Folgen (neueste zuerst, gehörte ausblendbar).
   - Wiedergabe und Fortschritt pro Folge.
