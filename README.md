@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml"><img src="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/Celestial0579/lagerfeuer/releases/latest"><img src="https://img.shields.io/github/v/release/Celestial0579/lagerfeuer?color=AB5019" alt="Release" /></a>
+  <a href="https://github.com/Celestial0579/lagerfeuer/releases/latest"><img src="https://img.shields.io/github/v/release/Celestial0579/lagerfeuer?color=A24C18" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-GPL--3.0-33414B" alt="GPL-3.0" /></a>
 </p>
 

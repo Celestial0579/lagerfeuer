@@ -11,25 +11,27 @@
 
             <!--
                 Farbschema angelehnt an firestrike.de:
-                Glut #AB5019 / #D9713C (Akzent), Funke #E8A33D, Stahl #33414B / #212B33 / #B4C6D1,
-                Grund #EFF0ED / #141715, Fläche #FFFFFF, Linie #C9CCC6, Text #1B1E1C / #E8EBE7.
+                Glut #A24C18 / #DB7745 (Akzent), Funke #E8A33D / #F2B558, Stahl #33414B / #212B33 / #B4C6D1,
+                Grund #EFF0ED / #141715, Fläche #FFFFFF / #1C201D, Linie #C9CCC6 / #38403A, Text #1B1E1C / #E8EBE7.
+                Glut seit 0.2.8 etwas kräftiger, damit sie als Text auf jeder Fläche WCAG AA (4,5:1) erreicht (#66).
+                Werte nach firestrike-branding (Tokens 1.0.0); Überschriften in Stahl tief, Glut nur für Verweise und Akzente (#67).
             -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
-                    <Color x:Key="SystemAccentColor">#AB5019</Color>
-                    <Color x:Key="SystemAccentColorLight1">#C2602A</Color>
-                    <Color x:Key="SystemAccentColorLight2">#D9713C</Color>
+                    <Color x:Key="SystemAccentColor">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorLight1">#BE612E</Color>
+                    <Color x:Key="SystemAccentColorLight2">#DB7745</Color>
                     <Color x:Key="SystemAccentColorLight3">#E8A33D</Color>
-                    <Color x:Key="SystemAccentColorDark1">#AB5019</Color>
-                    <Color x:Key="SystemAccentColorDark2">#8E4113</Color>
-                    <Color x:Key="SystemAccentColorDark3">#6E320E</Color>
+                    <Color x:Key="SystemAccentColorDark1">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorDark2">#8A3F12</Color>
+                    <Color x:Key="SystemAccentColorDark3">#6B310D</Color>
 
                     <SolidColorBrush x:Key="LfBackgroundBrush" Color="#EFF0ED" />
                     <SolidColorBrush x:Key="LfSurfaceBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="#E3E5E1" />
                     <SolidColorBrush x:Key="LfLineBrush" Color="#C9CCC6" />
-                    <SolidColorBrush x:Key="LfHeadingBrush" Color="#33414B" />
-                    <SolidColorBrush x:Key="LfEmberBrush" Color="#AB5019" />
+                    <SolidColorBrush x:Key="LfHeadingBrush" Color="#212B33" />
+                    <SolidColorBrush x:Key="LfEmberBrush" Color="#A24C18" />
                     <SolidColorBrush x:Key="LfSparkBrush" Color="#E8A33D" />
 
                     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#1B1E1C" />
@@ -41,28 +43,28 @@
                 </ResourceDictionary>
 
                 <ResourceDictionary x:Key="Dark">
-                    <Color x:Key="SystemAccentColor">#AB5019</Color>
-                    <Color x:Key="SystemAccentColorLight1">#C2602A</Color>
-                    <Color x:Key="SystemAccentColorLight2">#D9713C</Color>
+                    <Color x:Key="SystemAccentColor">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorLight1">#BE612E</Color>
+                    <Color x:Key="SystemAccentColorLight2">#DB7745</Color>
                     <Color x:Key="SystemAccentColorLight3">#E8A33D</Color>
-                    <Color x:Key="SystemAccentColorDark1">#AB5019</Color>
-                    <Color x:Key="SystemAccentColorDark2">#8E4113</Color>
-                    <Color x:Key="SystemAccentColorDark3">#6E320E</Color>
+                    <Color x:Key="SystemAccentColorDark1">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorDark2">#8A3F12</Color>
+                    <Color x:Key="SystemAccentColorDark3">#6B310D</Color>
 
                     <SolidColorBrush x:Key="LfBackgroundBrush" Color="#141715" />
-                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="#1B1F1D" />
-                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="#212B33" />
-                    <SolidColorBrush x:Key="LfLineBrush" Color="#2C322F" />
+                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="#1C201D" />
+                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="#262B27" />
+                    <SolidColorBrush x:Key="LfLineBrush" Color="#38403A" />
                     <SolidColorBrush x:Key="LfHeadingBrush" Color="#B4C6D1" />
-                    <SolidColorBrush x:Key="LfEmberBrush" Color="#D9713C" />
-                    <SolidColorBrush x:Key="LfSparkBrush" Color="#E8A33D" />
+                    <SolidColorBrush x:Key="LfEmberBrush" Color="#DB7745" />
+                    <SolidColorBrush x:Key="LfSparkBrush" Color="#F2B558" />
 
                     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8EBE7" />
-                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A9AFAA" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A5ADA6" />
                     <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
                     <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="#1B1F1D" />
-                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#2C322F" />
+                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="#1C201D" />
+                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#38403A" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -77,7 +79,7 @@
             <Style x:Key="LfTitleLargeStyle" BasedOn="{StaticResource TitleLargeTextBlockStyle}" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource LfSerifFont}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Foreground" Value="{ThemeResource LfEmberBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource LfHeadingBrush}" />
             </Style>
             <Style x:Key="LfSubtitleStyle" BasedOn="{StaticResource SubtitleTextBlockStyle}" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource LfSerifFont}" />
