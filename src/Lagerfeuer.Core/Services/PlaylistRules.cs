@@ -113,7 +113,7 @@ public static class PlaylistRules
     public static bool Applies(PlaylistChange change, string? userId, string? libraryId)
         => userId is not null && change.UserId == userId && change.LibraryId == libraryId;
 
-    private static string Clean(string? input, int max)
+    internal static string Clean(string? input, int max)
     {
         if (string.IsNullOrWhiteSpace(input)) return "";
         var sb = new System.Text.StringBuilder(Math.Min(input.Length, max + 1));
@@ -133,7 +133,7 @@ public static class PlaylistRules
         return Cut(sb.ToString(), max);
     }
 
-    private static string Cut(string s, int max)
+    internal static string Cut(string s, int max)
     {
         if (s.Length <= max) return s;
         var cut = max;

@@ -17,8 +17,10 @@ public sealed partial class BookPage : Page
         App.Progress.Changed += OnProgressChanged;
         App.Downloads.Changed += OnDownloadChanged;
         App.BookmarksChanged += OnBookmarksChanged;
+        PlaylistUi.CollectionRightsChanged += OnCollectionRightsChanged;
         Unloaded += (_, _) =>
         {
+            PlaylistUi.CollectionRightsChanged -= OnCollectionRightsChanged;
             App.Progress.Changed -= OnProgressChanged;
             App.Downloads.Changed -= OnDownloadChanged;
             App.BookmarksChanged -= OnBookmarksChanged;
@@ -58,6 +60,7 @@ public sealed partial class BookPage : Page
 
             BuildLinks();
             UpdateBookmarks();
+            UpdateCollectionButton();
             UpdateProgress();
             UpdateDownloadState();
             ContentRoot.Visibility = Visibility.Visible;
@@ -288,4 +291,16 @@ public sealed partial class BookPage : Page
         if (_item is not { } item) return;
         PlaylistUi.CreateAddFlyout(() => (item.LibraryId, item.Id, null), XamlRoot).ShowAt((FrameworkElement)sender);
     }
+
+    private void OnAddToCollection(object sender, RoutedEventArgs e)
+    {
+        if (_item is not { } item || !App.CollectionRights.CanEdit) return;
+        PlaylistUi.CreateCollectionFlyout(() => (item.LibraryId, item.Id), XamlRoot).ShowAt((FrameworkElement)sender);
+    }
+
+    /// <summary>Sammlungen gibt es nur für Bücher und nur mit dem Recht „Aktualisieren“ (#35).</summary>
+    private void UpdateCollectionButton()
+        => CollectionButton.Visibility = _item is { IsPodcast: false } && App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+
+    private void OnCollectionRightsChanged(object? sender, EventArgs e) => UpdateCollectionButton();
 }

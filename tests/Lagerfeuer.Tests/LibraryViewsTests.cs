@@ -7,7 +7,7 @@ public class LibraryViewsTests
     [Fact]
     public void Buchbibliothek_HatBuecherSerienAutoren()
     {
-        Assert.Equal([LibraryViews.Books, LibraryViews.Series, LibraryViews.Authors], LibraryViews.For("book"));
+        Assert.Equal([LibraryViews.Books, LibraryViews.Series, LibraryViews.Authors, LibraryViews.Collections], LibraryViews.For("book"));
         Assert.True(LibraryViews.ShowSelector("book"));
     }
 

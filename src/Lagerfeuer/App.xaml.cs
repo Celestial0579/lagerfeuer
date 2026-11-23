@@ -33,6 +33,30 @@ public partial class App : Application
 
     public static void RaisePlaylistChanged(PlaylistChange change) => PlaylistChanged?.Invoke(null, change);
 
+    /// <summary>Eine Sammlung in einer Bibliothek des Nutzers hat sich geändert (#35). Nur Anlass zum Neuladen.</summary>
+    public static event EventHandler<CollectionChange>? CollectionChanged;
+
+    /// <summary>Was der Nutzer an Sammlungen darf. Nach einem 403 mit <see cref="RefreshRightsAsync"/> neu holen.</summary>
+    public static CollectionRules.Rights CollectionRights => CollectionRules.For(User);
+
+    /// <summary>Rechte des Nutzers neu vom Server holen, z. B. nachdem er 403 gemeldet hat.</summary>
+    public static async Task RefreshRightsAsync()
+    {
+        try
+        {
+            var me = await Api.GetMeAsync();
+            if (User is not null)
+            {
+                User.Type = me.Type;
+                User.Permissions = me.Permissions;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Rechte konnten nicht neu geladen werden", ex);
+        }
+    }
+
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
     public static bool IsOffline { get; set; }
 
@@ -100,6 +124,10 @@ public partial class App : Application
         Player.AttachCallDetector(Calls);
         if (Settings.PauseOnCalls) _ = Calls.StartAsync();
         LiveSync.ProgressUpdated += (_, p) => dispatcher.TryEnqueue(() => OnRemoteProgress(p));
+        LiveSync.CollectionChanged += (_, c) => dispatcher.TryEnqueue(() =>
+        {
+            if (CollectionRules.Applies(c, Libraries.Select(l => l.Id))) CollectionChanged?.Invoke(null, c);
+        });
         LiveSync.PlaylistChanged += (_, c) => dispatcher.TryEnqueue(() =>
         {
             // Nur Listen des angemeldeten Nutzers in einer seiner Bibliotheken.

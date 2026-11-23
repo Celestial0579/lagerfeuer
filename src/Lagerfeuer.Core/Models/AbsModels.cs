@@ -32,6 +32,8 @@ public sealed class AbsUser
 {
     public string Id { get; set; } = "";
     public string Username { get; set; } = "";
+    /// <summary>root, admin, user oder guest. Verwalter dürfen alles, unabhängig von <see cref="Permissions"/>.</summary>
+    public string? Type { get; set; }
     /// <summary>Legacy-Token (ABS &lt; 2.26). Neuere Server liefern AccessToken/RefreshToken.</summary>
     public string? Token { get; set; }
     public string? AccessToken { get; set; }
@@ -45,6 +47,10 @@ public sealed class UserPermissions
 {
     /// <summary>Darf Dateien herunterladen (Admin-Einstellung) – gilt auch für Offline-Downloads.</summary>
     public bool Download { get; set; } = true;
+    /// <summary>Darf ändern – bei Sammlungen: anlegen, umbenennen, ordnen, Bücher hinzufügen und entfernen.</summary>
+    public bool Update { get; set; }
+    /// <summary>Darf löschen – bei Sammlungen: die ganze Sammlung.</summary>
+    public bool Delete { get; set; }
 }
 
 /// <summary>Lesezeichen: identifiziert über (libraryItemId, time) – es gibt keine eigene Id.</summary>
@@ -563,5 +569,25 @@ public sealed class PlaylistItem
 public sealed class PlaylistsResponse
 {
     public List<Playlist> Results { get; set; } = [];
+    public int Total { get; set; }
+}
+
+/// <summary>
+/// Sammlung aus GET /api/collections/:id bzw. /api/libraries/:id/collections (#35). Alle Nutzer der Bibliothek
+/// sehen sie. Alle Angaben kommen vom Server und werden nur als schlichter Text angezeigt.
+/// </summary>
+public sealed class Collection
+{
+    public string Id { get; set; } = "";
+    public string LibraryId { get; set; } = "";
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public List<LibraryItem> Books { get; set; } = [];
+    public long LastUpdate { get; set; }
+}
+
+public sealed class CollectionsResponse
+{
+    public List<Collection> Results { get; set; } = [];
     public int Total { get; set; }
 }

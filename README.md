@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml"><img src="https://github.com/Celestial0579/lagerfeuer/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/Celestial0579/lagerfeuer/releases/latest"><img src="https://img.shields.io/github/v/release/Celestial0579/lagerfeuer?color=AB5019" alt="Release" /></a>
+  <a href="https://github.com/Celestial0579/lagerfeuer/releases/latest"><img src="https://img.shields.io/github/v/release/Celestial0579/lagerfeuer?color=A24C18" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-GPL--3.0-33414B" alt="GPL-3.0" /></a>
 </p>
 
@@ -55,6 +55,9 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - **Filter** nach Fortschritt: nicht begonnen, angefangen, nicht beendet, beendet.
   - Suche, Nachladen beim Scrollen.
   - Buchseite mit Beschreibung, Kapiteln, Fortschritt, **Lesezeichen**, Links zu Autor und Serie, „Als beendet markieren“.
+  - **Wiedergabelisten:** eigene Listen aus Büchern und Podcast-Folgen anlegen, umbenennen, ordnen und nacheinander abspielen; eine ganze Liste auf einmal herunterladen.
+  - **Sammlungen:** Bücherlisten, die alle Nutzer der Bibliothek sehen. Anlegen, umbenennen, beschreiben, ordnen und Bücher entfernen mit dem Recht „Aktualisieren“, eine Sammlung löschen mit „Löschen“; „Alle abspielen“ in ihrer Reihenfolge.
+  - **Mehrere Bücher auf einmal** in eine Sammlung oder Wiedergabeliste: in der Bibliothek „Mehrere Bücher auswählen“, dann „Zur Sammlung …“ oder „Zur Wiedergabeliste …“.
 - **Podcasts**
   - Podcast-Bibliotheken, Podcast-Seite mit allen Folgen (neueste zuerst, gehörte ausblendbar).
   - Wiedergabe und Fortschritt pro Folge.
@@ -184,7 +187,7 @@ build/                  publish.ps1 (EXE, Installer, Signieren), make-art.ps1 (G
 
 ## Roadmap
 
-Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung.
+Erledigt: Offline-Wiedergabe (v2), Taskleisten-Miniplayer, Auto-Pause bei Anrufen, Live-Sync, Lesezeichen, Serien- und Autorenansichten, Filter und Sortierung, Podcasts, Geräteverwaltung, Wiedergabelisten, Sammlungen.
 
 Vorbereitet, braucht noch eine Entscheidung:
 - **Code-Signing:** Signiert wird noch nicht.
@@ -196,7 +199,6 @@ Vorbereitet, braucht noch eine Entscheidung:
   - Fehlt noch: die Einreichung als Pull Request bei [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
 
 Ideen für später:
-- Sammlungen und Playlists.
 - Statistiken (Hörzeit pro Tag/Woche).
 ## Lizenz
 
