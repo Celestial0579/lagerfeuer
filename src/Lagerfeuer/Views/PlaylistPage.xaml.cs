@@ -88,19 +88,20 @@ public sealed partial class PlaylistPage : Page
         foreach (var item in playlist.Items) _entries.Add(new PlaylistEntry(item));
         CountText.Text = _entries.Count == 1 ? "1 Titel" : $"{_entries.Count} Titel";
         PlayButton.IsEnabled = _entries.Any(e => e.IsAvailable);
-        DownloadButton.IsEnabled = PlaylistRules.DownloadPlan(playlist).Books.Count > 0;
+        DownloadButton.IsEnabled = PlaylistRules.DownloadPlan(playlist).Entries.Count > 0;
     }
 
     /// <summary>
-    /// Legt jedes Buch der Liste in die bestehenden Downloads (#62). Fortschritt und Abbrechen wie bei einzelnen
-    /// Downloads auf der Seite „Downloads“. Abgelegt wird unter der Item-ID, nie unter dem Namen der Liste.
+    /// Legt jedes Buch und jede Podcast-Folge (#76) der Liste in die bestehenden Downloads (#62). Fortschritt und
+    /// Abbrechen wie bei einzelnen Downloads auf der Seite „Downloads“. Abgelegt wird unter Item- bzw. Folgen-ID,
+    /// nie unter dem Namen der Liste.
     /// </summary>
     private void OnDownload(object sender, RoutedEventArgs e)
     {
         if (_playlist is null) return;
         var plan = PlaylistRules.DownloadPlan(_playlist);
-        foreach (var book in plan.Books) App.Downloads.Enqueue(book.ItemId, book.Title);
-        if (plan.Books.Count > 0) App.MainWindow.ShowInfo(plan.Describe(), "Downloads anzeigen", App.MainWindow.OpenDownloads);
+        foreach (var entry in plan.Entries) App.Downloads.Enqueue(entry.ItemId, entry.Title, entry.EpisodeId);
+        if (plan.Entries.Count > 0) App.MainWindow.ShowInfo(plan.Describe(), "Downloads anzeigen", App.MainWindow.OpenDownloads);
         else App.MainWindow.ShowInfo(plan.Describe());
     }
 

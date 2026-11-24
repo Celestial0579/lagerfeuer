@@ -234,6 +234,8 @@ public sealed class AudioFile
 public sealed class LocalItem
 {
     public string LibraryItemId { get; set; } = "";
+    /// <summary>Nur bei einer heruntergeladenen Podcast-Folge (#76): die Folge; LibraryItemId ist dann der Podcast.</summary>
+    public string? EpisodeId { get; set; }
     public string Title { get; set; } = "";
     public string? Author { get; set; }
     public string? Narrator { get; set; }
@@ -290,11 +292,47 @@ public sealed class LocalItem
         };
     }
 
+    /// <summary>
+    /// Eine Podcast-Folge zum Herunterladen (#76): ihre Audiodatei als einziger Track, mit derselben Adresse wie
+    /// beim Streamen, damit schon gehörte Teile im Cache nicht erneut geladen werden. Der Podcast-Titel steht als
+    /// Autor. Kennungen vom Server gehen nur schlicht in die Adresse; sonst bleibt die Trackliste leer.
+    /// </summary>
+    public static LocalItem FromEpisode(LibraryItem podcast, PodcastEpisode episode)
+    {
+        var tracks = new List<AudioTrack>();
+        if (episode.AudioFile is { Exclude: false } file && Services.PlaylistRules.IsPlainId(podcast.Id) &&
+            Services.PlaylistRules.IsPlainId(file.Ino))
+        {
+            tracks.Add(new AudioTrack
+            {
+                Index = file.Index,
+                StartOffset = 0,
+                Duration = file.Duration > 0 ? file.Duration : episode.Duration,
+                Title = file.Metadata?.Filename,
+                ContentUrl = $"/api/items/{podcast.Id}/file/{file.Ino}",
+                MimeType = file.MimeType,
+                Metadata = file.Metadata,
+            });
+        }
+        return new LocalItem
+        {
+            LibraryItemId = podcast.Id,
+            EpisodeId = episode.Id,
+            Title = episode.Title ?? "",
+            Author = podcast.Media.Metadata.Title,
+            Description = episode.Description,
+            Duration = episode.DisplayDuration > 0 ? episode.DisplayDuration : tracks.Sum(t => t.Duration),
+            Tracks = tracks,
+            Chapters = [],
+        };
+    }
+
     /// <summary>Session für die Wiedergabe ohne Server.</summary>
     public PlaybackSession ToOfflineSession(string sessionId, double currentTime) => new()
     {
         Id = sessionId,
         LibraryItemId = LibraryItemId,
+        EpisodeId = EpisodeId,
         DisplayTitle = Title,
         DisplayAuthor = Author,
         Duration = Duration,

@@ -9,6 +9,9 @@ public enum DownloadStatus { Queued, Downloading, Completed, Failed, Canceled }
 public sealed class DownloadState
 {
     public required string ItemId { get; init; }
+    /// <summary>Bei einer Podcast-Folge (#76) die Folge, sonst null.</summary>
+    public string? EpisodeId { get; init; }
+    public string Key => DownloadManager.Key(ItemId, EpisodeId);
     public string Title { get; internal set; } = "";
     public DownloadStatus Status { get; internal set; } = DownloadStatus.Queued;
     public double Fraction { get; internal set; }
@@ -19,7 +22,7 @@ public sealed class DownloadState
 }
 
 /// <summary>
-/// Lädt Bücher vollständig herunter und heftet sie an (Offline-Wiedergabe). Nutzt denselben
+/// Lädt Bücher und Podcast-Folgen (#76) vollständig herunter und heftet sie an (Offline-Wiedergabe). Nutzt denselben
 /// blockweisen Cache wie das Streaming – bereits gehörte Teile werden nicht erneut übertragen.
 /// Downloads laufen nacheinander.
 /// </summary>
@@ -46,33 +49,65 @@ public sealed class DownloadManager
     /// <summary>Zustandsänderung eines Downloads (Hintergrund-Thread).</summary>
     public event EventHandler<DownloadState>? Changed;
 
-    public DownloadState? Get(string itemId) => _states.GetValueOrDefault(itemId);
+    /// <summary>Schlüssel eines Downloads: Item-ID, bei einer Folge „Item-ID/Folgen-ID“.</summary>
+    public static string Key(string itemId, string? episodeId = null) => ProgressStore.Key(itemId, episodeId);
+
+    /// <summary>Zerlegt einen <see cref="Key"/> wieder in Item- und Folgen-ID.</summary>
+    public static (string ItemId, string? EpisodeId) ParseKey(string key)
+    {
+        var i = key.IndexOf('/');
+        return i < 0 ? (key, null) : (key[..i], key[(i + 1)..]);
+    }
+
+    public DownloadState? Get(string itemId, string? episodeId = null) => _states.GetValueOrDefault(Key(itemId, episodeId));
 
     public IReadOnlyList<DownloadState> All => _states.Values.ToList();
 
-    public DownloadState Enqueue(string itemId, string? title = null)
+    /// <summary>
+    /// Stellt ein Buch oder eine Folge in die Warteschlange. Kennungen vom Server nur schlicht: Sie bilden den
+    /// Schlüssel und über <see cref="CachePaths.SafeId"/> Dateinamen. Eine andere Kennung ergibt gleich einen
+    /// fehlgeschlagenen Download statt einer Ausnahme im Klick der Oberfläche.
+    /// </summary>
+    public DownloadState Enqueue(string itemId, string? title = null, string? episodeId = null)
     {
-        if (_states.TryGetValue(itemId, out var existing) && existing.IsActive) return existing;
-        var state = new DownloadState { ItemId = itemId, Title = title ?? "" };
-        _states[itemId] = state;
+        if (!PlaylistRules.IsPlainId(itemId) || (episodeId is not null && !PlaylistRules.IsPlainId(episodeId)))
+            return new DownloadState { ItemId = itemId, EpisodeId = episodeId, Title = title ?? "", Status = DownloadStatus.Failed, Error = "Ungültige Kennung vom Server." };
+        var key = Key(itemId, episodeId);
+        if (_states.TryGetValue(key, out var existing) && existing.IsActive) return existing;
+        var state = new DownloadState { ItemId = itemId, EpisodeId = episodeId, Title = title ?? "" };
+        _states[key] = state;
         _queue.Writer.TryWrite(state);
         Changed?.Invoke(this, state);
         return state;
     }
 
-    public void Cancel(string itemId)
+    public void Cancel(string itemId, string? episodeId = null)
     {
-        if (_states.TryGetValue(itemId, out var state) && state.IsActive) state.Cancellation.Cancel();
+        if (_states.TryGetValue(Key(itemId, episodeId), out var state) && state.IsActive) state.Cancellation.Cancel();
     }
 
-    /// <summary>Entfernt einen Download: Anheftung lösen und lokale Dateien löschen.</summary>
-    public void Remove(string itemId)
+    /// <summary>
+    /// Entfernt einen Download: Anheftung lösen und lokale Dateien löschen. Bei einer Folge nur deren Dateien,
+    /// der Podcast-Ordner mit anderen Folgen bleibt.
+    /// </summary>
+    public void Remove(string itemId, string? episodeId = null)
     {
-        Cancel(itemId);
-        _cache.SetPinned(itemId, false);
-        try { _cache.DeleteItem(itemId); }
-        catch (IOException ex) { Log.Error($"Download {itemId} konnte nicht vollständig gelöscht werden (in Benutzung?)", ex); }
-        _states.TryRemove(itemId, out _);
+        Cancel(itemId, episodeId);
+        try
+        {
+            if (episodeId is null)
+            {
+                _cache.SetPinned(itemId, false);
+                _cache.DeleteItem(itemId);
+            }
+            else
+            {
+                _cache.SetEpisodePinned(itemId, episodeId, false);
+                _cache.DeleteEpisode(itemId, episodeId);
+            }
+        }
+        catch (IOException ex) { Log.Error($"Download {Key(itemId, episodeId)} konnte nicht vollständig gelöscht werden (in Benutzung?)", ex); }
+        _states.TryRemove(Key(itemId, episodeId), out _);
     }
 
     private async Task WorkerAsync()
@@ -91,12 +126,14 @@ public sealed class DownloadManager
             }
             catch (OperationCanceledException) when (state.Cancellation.IsCancellationRequested)
             {
-                _cache.SetPinned(state.ItemId, false); // Teile bleiben als normaler Cache erhalten
+                // Teile bleiben als normaler Cache erhalten
+                if (state.EpisodeId is { } episodeId) _cache.SetEpisodePinned(state.ItemId, episodeId, false);
+                else _cache.SetPinned(state.ItemId, false);
                 Set(state, DownloadStatus.Canceled);
             }
             catch (Exception ex)
             {
-                Log.Error($"Download von {state.ItemId} fehlgeschlagen", ex);
+                Log.Error($"Download von {state.Key} fehlgeschlagen", ex);
                 state.Error = ex.Message;
                 Set(state, DownloadStatus.Failed);
             }
@@ -108,13 +145,27 @@ public sealed class DownloadManager
         Set(state, DownloadStatus.Downloading, 0);
 
         var item = await _api.GetItemAsync(state.ItemId, ct);
-        var local = LocalItem.FromLibraryItem(item);
-        if (local.Tracks.Count == 0)
-            throw new InvalidOperationException("Dieses Buch enthält keine Audiodateien.");
-
-        state.Title = local.Title;
-        _cache.SaveLocalItem(local);
-        _cache.SetPinned(local.LibraryItemId, true);
+        LocalItem local;
+        if (state.EpisodeId is { } episodeId)
+        {
+            var episode = item.Media.Episodes?.FirstOrDefault(e => e.Id == episodeId)
+                ?? throw new InvalidOperationException("Diese Folge gibt es auf dem Server nicht mehr.");
+            local = LocalItem.FromEpisode(item, episode);
+            if (local.Tracks.Count == 0)
+                throw new InvalidOperationException("Diese Folge enthält keine Audiodatei.");
+            state.Title = local.Title;
+            _cache.SaveLocalEpisode(local);
+            _cache.SetEpisodePinned(local.LibraryItemId, episodeId, true);
+        }
+        else
+        {
+            local = LocalItem.FromLibraryItem(item);
+            if (local.Tracks.Count == 0)
+                throw new InvalidOperationException("Dieses Buch enthält keine Audiodateien.");
+            state.Title = local.Title;
+            _cache.SaveLocalItem(local);
+            _cache.SetPinned(local.LibraryItemId, true);
+        }
         if (_covers is not null) _ = _covers.GetCoverPathAsync(local.LibraryItemId);
 
         var total = local.Tracks.Sum(t => Math.Max(t.Duration, 1));

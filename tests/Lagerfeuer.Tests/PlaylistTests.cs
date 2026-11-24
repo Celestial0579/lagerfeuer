@@ -288,17 +288,39 @@ public class PlaylistTests
     };
 
     [Fact]
-    public void Herunterladen_NimmtJedesVerfuegbareBuchEinmal_InDerReihenfolge()
+    public void Herunterladen_NimmtJedesBuchUndJedeFolgeEinmal_InDerReihenfolge()
     {
         var plan = PlaylistRules.DownloadPlan(ListWith(Book("b"), EpisodeItem("pod", "ep1"), Book("a"), Book("b"),
-            new PlaylistItem { LibraryItemId = "weg" }, EpisodeItem("pod", "ep2")));
+            new PlaylistItem { LibraryItemId = "weg" }, EpisodeItem("pod", "ep2"), EpisodeItem("pod", "ep1")));
 
-        Assert.Equal(["b", "a"], plan.Books.Select(b => b.ItemId));
-        Assert.Equal(2, plan.Episodes);
+        Assert.Equal(["b", "pod/ep1", "a", "pod/ep2"], plan.Entries.Select(e => ProgressStore.Key(e.ItemId, e.EpisodeId)));
         Assert.Equal(1, plan.Unavailable);
         Assert.Equal(0, plan.OverLimit);
-        Assert.Equal("2 Bücher kommen in die Downloads. 2 Podcast-Folgen bleiben aus: Folgen lassen sich noch nicht herunterladen. " +
-                     "1 Eintrag ist nicht mehr verfügbar.", plan.Describe());
+        Assert.Equal("2 Bücher und 2 Folgen kommen in die Downloads. 1 Eintrag ist nicht mehr verfügbar.", plan.Describe());
+    }
+
+    [Theory]
+    [InlineData(1, 0, "1 Buch kommt in die Downloads.")]
+    [InlineData(0, 1, "1 Folge kommt in die Downloads.")]
+    [InlineData(0, 3, "3 Folgen kommen in die Downloads.")]
+    [InlineData(1, 1, "1 Buch und 1 Folge kommen in die Downloads.")]
+    [InlineData(0, 0, "In dieser Liste ist nichts zum Herunterladen.")]
+    public void Herunterladen_Meldung(int books, int episodes, string expected)
+    {
+        var items = Enumerable.Range(0, books).Select(i => Book($"b{i}"))
+            .Concat(Enumerable.Range(0, episodes).Select(i => EpisodeItem("pod", $"ep{i}"))).ToArray();
+        Assert.Equal(expected, PlaylistRules.DownloadPlan(ListWith(items)).Describe());
+    }
+
+    [Theory]
+    [InlineData("../ep")]
+    [InlineData("ep/1")]
+    [InlineData("")]
+    public void Herunterladen_BoeseFolgenIdBleibtAus(string episodeId)
+    {
+        var plan = PlaylistRules.DownloadPlan(ListWith(EpisodeItem("pod", episodeId), EpisodeItem("pod", "ok")));
+        Assert.Equal(["ok"], plan.Entries.Select(e => e.EpisodeId));
+        Assert.Equal(1, plan.Unavailable);
     }
 
     [Theory]
@@ -312,7 +334,7 @@ public class PlaylistTests
     {
         var plan = PlaylistRules.DownloadPlan(ListWith(new PlaylistItem { LibraryItemId = id, LibraryItem = new LibraryItem { Id = id } }, Book("ok")));
 
-        Assert.Equal(["ok"], plan.Books.Select(b => b.ItemId));
+        Assert.Equal(["ok"], plan.Entries.Select(b => b.ItemId));
         Assert.Equal(1, plan.Unavailable);
     }
 
@@ -321,7 +343,7 @@ public class PlaylistTests
     {
         // „CON“ ist eine schlichte ID; abgelegt wird sie wie jeder Download über CachePaths.SafeId, nie als Gerätename.
         var plan = PlaylistRules.DownloadPlan(ListWith(Book("CON")));
-        Assert.Equal("CON", Assert.Single(plan.Books).ItemId);
+        Assert.Equal("CON", Assert.Single(plan.Entries).ItemId);
         Assert.Matches(@"\Ah_[0-9a-f]{32}\z", CachePaths.SafeId("CON"));
     }
 
@@ -331,7 +353,7 @@ public class PlaylistTests
         var list = ListWith(TitledBook("a", "Teil\u202E1\u0007 " + new string('x', 400)));
         list.Name = @"..\..\CON";
 
-        var book = Assert.Single(PlaylistRules.DownloadPlan(list).Books);
+        var book = Assert.Single(PlaylistRules.DownloadPlan(list).Entries);
 
         Assert.DoesNotContain('\u202E', book.Title);
         Assert.DoesNotContain('\u0007', book.Title);
@@ -339,23 +361,24 @@ public class PlaylistTests
     }
 
     [Fact]
-    public void Herunterladen_HoechstensFuenfhundertBuecher()
+    public void Herunterladen_HoechstensFuenfhundertEintraege()
     {
-        var items = Enumerable.Range(0, PlaylistRules.MaxDownloadBooks + 3).Select(i => Book($"b{i}")).ToArray();
+        var items = Enumerable.Range(0, PlaylistRules.MaxDownloadEntries + 3).Select(i => Book($"b{i}")).ToArray();
 
         var plan = PlaylistRules.DownloadPlan(ListWith(items));
 
-        Assert.Equal(PlaylistRules.MaxDownloadBooks, plan.Books.Count);
+        Assert.Equal(PlaylistRules.MaxDownloadEntries, plan.Entries.Count);
         Assert.Equal(3, plan.OverLimit);
         Assert.Contains("3 bleiben aus", plan.Describe());
     }
 
     [Fact]
-    public void Herunterladen_NurFolgen_SagtDasOhneDownload()
+    public void Herunterladen_NurFolgen_KommenJetztMit()
     {
         var plan = PlaylistRules.DownloadPlan(ListWith(EpisodeItem("pod", "ep1")));
 
-        Assert.Empty(plan.Books);
-        Assert.StartsWith("In dieser Liste ist kein Buch zum Herunterladen.", plan.Describe());
+        var entry = Assert.Single(plan.Entries);
+        Assert.Equal(("pod", "ep1"), (entry.ItemId, entry.EpisodeId));
+        Assert.Equal("1 Folge kommt in die Downloads.", plan.Describe());
     }
 }
