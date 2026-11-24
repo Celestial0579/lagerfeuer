@@ -35,6 +35,27 @@ jobs:
       - name: App bauen (ARM64)
         run: dotnet build src/Lagerfeuer/Lagerfeuer.csproj -c Release -p:Platform=ARM64
 
+  # Farben in src/Lagerfeuer/App.xaml gegen firestrike-branding (#68). Das Branding-Repo kommt auf einem festen
+  # Commit dazu, nie über main. Einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo.
+  farben:
+    name: Farben (firestrike-branding)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BRANDING_COMMIT: 1d98a6abc6a79d83ea0fbf2a17716f4edb7f2091 # Tokens 1.2.0 mit WinUI-Export
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # nur lesen
+
+      - name: firestrike-branding holen
+        run: |
+          git clone --quiet https://github.com/Celestial0579/firestrike-branding.git "$RUNNER_TEMP/marke"
+          git -C "$RUNNER_TEMP/marke" checkout --quiet "$BRANDING_COMMIT"
+
+      - name: App.xaml abgleichen
+        run: python3 "$RUNNER_TEMP/marke/werkzeuge/marke.py" abgleichen src/Lagerfeuer/App.xaml
+
   # Baut aus installer/Lagerfeuer.nsi ein Probe-Setup mit winziger Nutzlast und prüft, dass es keine fremden
   # Programme startet, die neben ihm liegen (tests/installer/Test-Installer.ps1).
   installer:

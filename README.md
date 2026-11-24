@@ -83,7 +83,7 @@ Lagerfeuer sucht selbst nach neuen Versionen (siehe [Updates](#updates)).
   - Playback-Sessions mit Sync alle 15 s und bei Pause, Abschluss beim Beenden. Gehörte Zeit geht bei Netzfehlern nicht verloren.
   - **Live-Sync** per Socket.IO: Fortschritt von anderen Geräten erscheint sofort. Ist dasselbe Buch hier pausiert, springt die Wiedergabe an die neue Stelle.
 - **Updates** direkt aus den GitHub-Releases dieses Repositorys.
-Das Farbschema (Glut, Funke, Stahl) ist an [firestrike.de](https://firestrike.de) angelehnt und funktioniert im hellen wie im dunklen Windows-Design.
+Das Farbschema (Glut, Funke, Stahl) ist an [firestrike.de](https://firestrike.de) angelehnt, kommt aus [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) und funktioniert im hellen wie im dunklen Windows-Design.
 
 ## SSO mit Authentik einrichten
 
@@ -153,6 +153,14 @@ Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests
 
 ```powershell
 ./tests/installer/Test-Installer.ps1
+```
+
+Die Farben in `src/Lagerfeuer/App.xaml` gleicht der Job „Farben (firestrike-branding)“ mit den Tokens von [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) ab, und zwar auf dem Commit, der in `ci.yml` als `BRANDING_COMMIT` steht. Neue Farben kommen von dort; einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo. Von Hand (Python 3.10 oder neuer):
+
+```bash
+git clone --quiet https://github.com/Celestial0579/firestrike-branding.git ../firestrike-branding
+git -C ../firestrike-branding checkout --quiet <BRANDING_COMMIT aus ci.yml>
+python3 ../firestrike-branding/werkzeuge/marke.py abgleichen src/Lagerfeuer/App.xaml
 ```
 
 ### Release veröffentlichen
