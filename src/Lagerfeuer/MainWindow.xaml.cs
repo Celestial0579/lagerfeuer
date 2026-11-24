@@ -37,11 +37,21 @@ public sealed partial class MainWindow : Window
         App.Api.SessionExpired += (_, _) => DispatcherQueue.TryEnqueue(() =>
             ShowLogin("Die Anmeldung ist abgelaufen. Bitte erneut anmelden."));
         Player.PropertyChanged += OnPlayerPropertyChanged;
+        Activated += OnWindowActivated;
 
         _ = StartAsync();
         StartUpdateChecks();
         _taskbar = new TaskbarIntegration(WinRT.Interop.WindowNative.GetWindowHandle(this), Player, DispatcherQueue);
         Closed += (_, _) => { _taskbar.Dispose(); _miniPlayer?.Close(); };
+    }
+
+    /// <summary>
+    /// Fenster wieder aktiv: Rechte nachfragen (#81). Hat ein Verwalter sie inzwischen geändert, meldet Audiobookshelf
+    /// das nicht dem betroffenen Nutzer.
+    /// </summary>
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated) _ = App.RefreshRightsIfDueAsync();
     }
 
     private readonly TaskbarIntegration _taskbar;

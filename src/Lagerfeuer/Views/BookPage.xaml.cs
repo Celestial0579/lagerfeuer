@@ -32,6 +32,7 @@ public sealed partial class BookPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         if (e.Parameter is string itemId) _ = LoadAsync(itemId);
+        _ = App.RefreshRightsIfDueAsync(); // „Zur Sammlung“ nach den aktuellen Rechten (#81)
     }
 
     private async Task LoadAsync(string itemId)

@@ -150,7 +150,11 @@ public sealed partial class LibraryPage : Page
         ShowView(view);
         if (view == "series" && !_seriesLoaded) _ = LoadSeriesAsync();
         if (view == "authors" && !_authorsLoaded) _ = LoadAuthorsAsync();
-        if (view == LibraryViews.Collections) _ = LoadCollectionsAsync(); // immer frisch: andere Nutzer ändern sie mit
+        if (view == LibraryViews.Collections)
+        {
+            _ = LoadCollectionsAsync(); // immer frisch: andere Nutzer ändern sie mit
+            _ = App.RefreshRightsIfDueAsync(); // der Hinweis ohne Sammlungen hängt am Recht (#81)
+        }
     }
 
     private void ShowView(string view)
@@ -264,6 +268,7 @@ public sealed partial class LibraryPage : Page
         FilterBox.Visibility = !on && !IsPodcastLibrary ? Visibility.Visible : Visibility.Collapsed;
         SortBox.Visibility = DescToggle.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        if (on) _ = App.RefreshRightsIfDueAsync(); // „Zur Sammlung …“ folgt den aktuellen Rechten (#81)
         UpdateSelection();
     }
 

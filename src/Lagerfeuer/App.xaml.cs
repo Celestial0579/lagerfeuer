@@ -36,25 +36,38 @@ public partial class App : Application
     /// <summary>Eine Sammlung in einer Bibliothek des Nutzers hat sich geändert (#35). Nur Anlass zum Neuladen.</summary>
     public static event EventHandler<CollectionChange>? CollectionChanged;
 
-    /// <summary>Was der Nutzer an Sammlungen darf. Nach einem 403 mit <see cref="RefreshRightsAsync"/> neu holen.</summary>
+    /// <summary>
+    /// Was der Nutzer an Sammlungen darf. Nach einem 403 mit <see cref="RefreshRightsAsync"/> neu holen, sonst über
+    /// <see cref="RefreshRightsIfDueAsync"/>.
+    /// </summary>
     public static CollectionRules.Rights CollectionRights => CollectionRules.For(User);
 
-    /// <summary>Rechte des Nutzers neu vom Server holen, z. B. nachdem er 403 gemeldet hat.</summary>
-    public static async Task RefreshRightsAsync()
+    /// <summary>Rechte des Nutzers neu vom Server holen, z. B. nachdem er 403 gemeldet hat. True, wenn sie sich geändert haben.</summary>
+    public static async Task<bool> RefreshRightsAsync()
     {
         try
         {
             var me = await Api.GetMeAsync();
-            if (User is not null)
-            {
-                User.Type = me.Type;
-                User.Permissions = me.Permissions;
-            }
+            return User is not null && UserRules.IsCurrentUser(User, me) && CollectionRules.TakeRights(User, me);
         }
         catch (Exception ex)
         {
             Log.Error("Rechte konnten nicht neu geladen werden", ex);
+            return false;
         }
+    }
+
+    private static readonly RightsRefreshThrottle RightsRefresh = new(TimeSpan.FromSeconds(30));
+
+    /// <summary>
+    /// Rechte nachfragen, wenn Knöpfe für Sammlungen erscheinen oder das Fenster wieder aktiv wird (#81). Ändert ein
+    /// Verwalter die Rechte, meldet Audiobookshelf das nur ihm selbst, nicht dem betroffenen Nutzer. Höchstens alle
+    /// 30 Sekunden; haben sich die Rechte geändert, passen offene Seiten ihre Knöpfe an.
+    /// </summary>
+    public static async Task RefreshRightsIfDueAsync()
+    {
+        if (IsOffline || User is null || !RightsRefresh.TryStart()) return;
+        if (await RefreshRightsAsync()) Views.PlaylistUi.NotifyCollectionRightsChanged();
     }
 
     /// <summary>Server nicht erreichbar – nur heruntergeladene Bücher verfügbar.</summary>
@@ -140,14 +153,15 @@ public partial class App : Application
         };
         LiveSync.UserUpdated += (_, user) => dispatcher.TryEnqueue(() =>
         {
+            // Nur Meldungen zum eigenen Konto: Ändert ein Verwalter einen anderen Nutzer, schickt Audiobookshelf
+            // ihm dessen Daten. Die ersetzen nie Fortschritt, Lesezeichen und Rechte des Angemeldeten.
+            if (User is null || !UserRules.IsCurrentUser(User, user)) return;
             Progress.Reset(user.MediaProgress);
-            if (User is not null)
-            {
-                User.Bookmarks = user.Bookmarks;
-                RaiseBookmarksChanged();
-                // Geänderte Rechte gleich übernehmen, nicht erst nach einem 403 (#81).
-                if (CollectionRules.TakeRights(User, user)) Views.PlaylistUi.NotifyCollectionRightsChanged();
-            }
+            User.Bookmarks = user.Bookmarks;
+            RaiseBookmarksChanged();
+            // Rechte aus der Meldung gleich übernehmen (#81). Ändert ein Verwalter sie, kommt keine Meldung;
+            // dafür fragt RefreshRightsIfDueAsync nach.
+            if (CollectionRules.TakeRights(User, user)) Views.PlaylistUi.NotifyCollectionRightsChanged();
         });
         MainWindow = new MainWindow();
         MainWindow.Activate();

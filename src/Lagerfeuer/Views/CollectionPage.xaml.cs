@@ -67,6 +67,7 @@ public sealed partial class CollectionPage : Page
         if (e.Parameter is not string id || !PlaylistRules.IsPlainId(id)) return;
         _collectionId = id;
         _ = LoadAsync();
+        _ = App.RefreshRightsIfDueAsync(); // Umbenennen, Löschen usw. nach den aktuellen Rechten (#81)
     }
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
