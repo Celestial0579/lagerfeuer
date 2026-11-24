@@ -187,8 +187,9 @@ public sealed class CacheManager(AbsApiClient api, string root)
         });
 
     /// <summary>
-    /// Entfernt eine Folge: ihre Tracks samt .map, ihre Daten und die Anheftung. Andere Folgen und der Ordner des
-    /// Podcasts bleiben; ist er danach leer, verschwindet er.
+    /// Entfernt eine Folge: ihre Tracks samt .map, dann die Anheftung, ihre Daten zuletzt (wie bei
+    /// <see cref="DeleteItem"/>, #85). Andere Folgen und der Ordner des Podcasts bleiben; ist er danach leer,
+    /// verschwindet er.
     /// </summary>
     public void DeleteEpisode(string itemId, string episodeId)
     {
@@ -201,8 +202,8 @@ public sealed class CacheManager(AbsApiClient api, string root)
             File.Delete(path);
             File.Delete(CachingHttpStream.MapPathFor(path));
         }
-        File.Delete(EpisodeFilePath(itemId, episodeId));
         File.Delete(EpisodePinPath(itemId, episodeId));
+        File.Delete(EpisodeFilePath(itemId, episodeId));
         if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
     }
 
@@ -274,10 +275,25 @@ public sealed class CacheManager(AbsApiClient api, string root)
         return dir.Exists ? dir.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) : 0;
     }
 
+    /// <summary>
+    /// Entfernt ein Buch samt Ordner. Erst die Audiodaten, dann die Anheftung, die Daten zuletzt (#85): Lässt sich
+    /// eine Datei nicht löschen, bleibt das Buch ein Download mit seinen Daten. Ein angehefteter Rest ohne Daten
+    /// tauchte nirgends mehr auf, und die Bereinigung ließe ihn liegen.
+    /// </summary>
     public void DeleteItem(string itemId)
     {
         var dir = GetItemDirectory(itemId);
-        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        if (!Directory.Exists(dir)) return;
+        var marker = Path.Combine(dir, PinnedFileName);
+        var data = Path.Combine(dir, ItemFileName);
+        foreach (var file in Directory.EnumerateFiles(dir).ToList())
+        {
+            if (!string.Equals(file, marker, StringComparison.OrdinalIgnoreCase) && !string.Equals(file, data, StringComparison.OrdinalIgnoreCase))
+                File.Delete(file);
+        }
+        File.Delete(marker);
+        File.Delete(data);
+        Directory.Delete(dir, recursive: true);
     }
 
     // ---------- Größe & Bereinigung ----------
@@ -332,9 +348,9 @@ public sealed class CacheManager(AbsApiClient api, string root)
                     total -= d.Size;
                     Log.Info($"Cache bereinigt: {d.Dir.Name} ({d.Size / 1024 / 1024} MB)");
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // Datei in Benutzung – überspringen
+                    // Datei in Benutzung oder schreibgeschützt – überspringen, die übrigen Ordner trotzdem bereinigen (#85)
                 }
             }
         }
@@ -357,9 +373,9 @@ public sealed class CacheManager(AbsApiClient api, string root)
                 file.Delete();
                 freed += size;
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Datei in Benutzung – überspringen
+                // Datei in Benutzung oder schreibgeschützt – überspringen (#85)
             }
         }
         if (freed > 0) Log.Info($"Cache bereinigt: {dir.Name} ohne heruntergeladene Folgen ({freed / 1024 / 1024} MB)");

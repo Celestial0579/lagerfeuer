@@ -57,6 +57,21 @@ public class CacheManagerTests : IDisposable
     }
 
     [Fact]
+    public void Bereinigung_OrdnerMitGeschuetzterDatei_HaeltDieUebrigenNichtAuf()
+    {
+        var now = DateTime.UtcNow;
+        CreateItem("gesperrt", 3000, now.AddDays(-3));
+        CreateItem("alt", 3000, now.AddDays(-2));
+
+        using (DeleteDenied.For(Path.Combine(_dir.Path, "gesperrt", "001_track.mp3")))
+            Cache.EnforceLimit(0, []);
+
+        // Bis #85 brach die Bereinigung am ersten Ordner ab; jeder weitere Lauf blieb dort wieder hängen.
+        Assert.True(Directory.Exists(Path.Combine(_dir.Path, "gesperrt")));
+        Assert.False(Directory.Exists(Path.Combine(_dir.Path, "alt")));
+    }
+
+    [Fact]
     public void LokaleBuchdaten_WerdenGespeichertUndGelistet()
     {
         var item = new LocalItem { LibraryItemId = "item9", Title = "Zweites", Chapters = [new Chapter { Id = 0, Start = 0, End = 60, Title = "Eins" }] };
