@@ -155,12 +155,13 @@ Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests
 ./tests/installer/Test-Installer.ps1
 ```
 
-Die Farben in `src/Lagerfeuer/App.xaml` gleicht der Job „Farben (firestrike-branding)“ mit den Tokens von [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) ab, und zwar auf dem Commit, der in `ci.yml` als `BRANDING_COMMIT` steht. Neue Farben kommen von dort; einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo. Daneben lehnt der Job feste Farbwerte außerhalb der Rollen (`Fs…Color`) und der Akzentreihe ab, denn die Pinsel sollen auf eine Rolle zeigen. Von Hand (Python 3.10 oder neuer):
+Die Farben in `src/Lagerfeuer/App.xaml` gleicht der Job „Farben (firestrike-branding)“ mit den Tokens von [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) ab, und zwar auf dem Commit, der in `ci.yml` als `BRANDING_COMMIT` steht. Neue Farben kommen von dort; einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo. Daneben lehnt der Job mit [`build/farben-pruefen.py`](build/farben-pruefen.py) in allen XAML-Dateien feste Farbwerte ab, denn die Pinsel sollen auf eine Rolle zeigen: Hex-Werte sind nur für die Rollen (`Fs…Color`) und die Akzentreihe in den Wörterbüchern `Light` und `Dark` von `App.xaml` erlaubt, und nur unter den Schlüsseln, die der Export führt; als Farbname nur `Transparent`. Im Wörterbuch `HighContrast` zeigt jede Rolle auf eine Systemfarbe und jeder eigene Pinsel (`Lf…Brush`) per `ThemeResource` auf dieselbe Systemfarbe wie seine Rolle. Von Hand (Python 3.10 oder neuer):
 
 ```bash
 git clone --quiet https://github.com/Celestial0579/firestrike-branding.git ../firestrike-branding
 git -C ../firestrike-branding checkout --quiet <BRANDING_COMMIT aus ci.yml>
 python3 ../firestrike-branding/werkzeuge/marke.py abgleichen src/Lagerfeuer/App.xaml
+python3 build/farben-pruefen.py --export ../firestrike-branding/exporte/winui/Firestrike.xaml
 ```
 
 ### Release veröffentlichen
