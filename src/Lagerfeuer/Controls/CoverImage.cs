@@ -22,7 +22,8 @@ public sealed partial class CoverImage : Grid
     public CoverImage()
     {
         CornerRadius = new CornerRadius(6);
-        Background = (Brush)Application.Current.Resources["LfSurfaceDeepBrush"];
+        // Den Hintergrund setzt ein Stil in App.xaml als ThemeResource. Hier einmal aus den Ressourcen gelesen, behielte
+        // er nach einem Wechsel des Designs die Farbe des alten (#92).
         Children.Add(_placeholder);
         Children.Add(_image);
     }
