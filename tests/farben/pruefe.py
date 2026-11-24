@@ -147,6 +147,12 @@ FAELLE: list[tuple[str, int, dict]] = [
      {APP: [('<Color x:Key="FsGrundColor">#141715</Color>', ""),
             ('<Color x:Key="FsFunkeColor">#F2B558</Color>',
              '<Color x:Key="FsFunkeColor">#F2B558</Color><Color x:Key="FsGrundColor">#141715</Color>')]}),
+    # Ein Schlüssel tiefer im Wörterbuch zählt nicht: Nachschlagen findet nur die obersten (#109).
+    ("Pinsel in Light nur verschachtelt", 1, 'Schlüssel LfSparkBrush fehlt im Wörterbuch Light',
+     {APP: [('<SolidColorBrush x:Key="LfSparkBrush" Color="{StaticResource FsFunkeColor}" />',
+             '<DataTemplate x:Key="LfProbe"><Grid><Grid.Resources><SolidColorBrush x:Key="LfSparkBrush" '
+             'Color="{StaticResource FsFunkeColor}" /></Grid.Resources></Grid></DataTemplate>'),
+            (DARK, DARK + '<DataTemplate x:Key="LfProbe"><Grid /></DataTemplate>')]}),
 ]
 
 
