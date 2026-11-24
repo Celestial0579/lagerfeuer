@@ -83,29 +83,28 @@ public static class PlaylistRules
             ? (object)new { libraryItemId = i.LibraryItemId }
             : new { libraryItemId = i.LibraryItemId, episodeId = i.EpisodeId }).ToArray();
 
-    /// <summary>Höchstens so viele Bücher legt „Liste herunterladen“ auf einmal in die Downloads.</summary>
-    public const int MaxDownloadBooks = 500;
+    /// <summary>Höchstens so viele Bücher und Folgen legt „Liste herunterladen“ auf einmal in die Downloads.</summary>
+    public const int MaxDownloadEntries = 500;
 
     /// <summary>
-    /// Was „Liste herunterladen“ in die Downloads legt (#62): jedes verfügbare Buch der Liste einmal, in ihrer
-    /// Reihenfolge, nur mit schlichter ID. Abgelegt wird es wie jeder Download unter seiner Item-ID
-    /// (<see cref="CachePaths.SafeId"/>); Name der Liste und Titel gehen in keinen Pfad ein, der Titel nur
-    /// bereinigt in die Anzeige. Podcast-Folgen lassen sich noch nicht herunterladen und werden gezählt.
+    /// Was „Liste herunterladen“ in die Downloads legt (#62): jedes verfügbare Buch und jede verfügbare Podcast-Folge
+    /// (#76) der Liste einmal, in ihrer Reihenfolge, nur mit schlichten IDs. Abgelegt wird wie bei jedem Download
+    /// unter Item- bzw. Folgen-ID (<see cref="CachePaths.SafeId"/>); Name der Liste und Titel gehen in keinen Pfad
+    /// ein, der Titel nur bereinigt in die Anzeige.
     /// </summary>
     public static PlaylistDownload DownloadPlan(Playlist p)
     {
-        var books = new List<PlaylistDownloadBook>();
+        var entries = new List<PlaylistDownloadEntry>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        int episodes = 0, unavailable = 0, overLimit = 0;
+        int unavailable = 0, overLimit = 0;
         foreach (var item in p.Items)
         {
             if (!IsAvailable(item)) unavailable++;
-            else if (item.EpisodeId is not null) episodes++;
-            else if (!seen.Add(item.LibraryItemId)) continue;
-            else if (books.Count >= MaxDownloadBooks) overLimit++;
-            else books.Add(new PlaylistDownloadBook(item.LibraryItemId, DisplayTitle(item)));
+            else if (!seen.Add(ProgressStore.Key(item.LibraryItemId, item.EpisodeId))) continue;
+            else if (entries.Count >= MaxDownloadEntries) overLimit++;
+            else entries.Add(new PlaylistDownloadEntry(item.LibraryItemId, DisplayTitle(item), item.EpisodeId));
         }
-        return new PlaylistDownload(books, episodes, unavailable, overLimit);
+        return new PlaylistDownload(entries, unavailable, overLimit);
     }
 
     /// <summary>
@@ -145,31 +144,33 @@ public static class PlaylistRules
 
 public enum PlaylistChangeKind { Added, Updated, Removed }
 
-/// <summary>Live-Meldung zu einer Wiedergabeliste (nur Kennungen, kein Inhalt).</summary>
-public sealed record PlaylistDownloadBook(string ItemId, string Title);
+/// <summary>Ein Buch oder (mit EpisodeId) eine Podcast-Folge für „Liste herunterladen“.</summary>
+public sealed record PlaylistDownloadEntry(string ItemId, string Title, string? EpisodeId = null);
 
-/// <summary>Ergebnis von <see cref="PlaylistRules.DownloadPlan"/>: die Bücher und was übersprungen wird.</summary>
-public sealed record PlaylistDownload(IReadOnlyList<PlaylistDownloadBook> Books, int Episodes, int Unavailable, int OverLimit)
+/// <summary>Ergebnis von <see cref="PlaylistRules.DownloadPlan"/>: Bücher und Folgen und was übersprungen wird.</summary>
+public sealed record PlaylistDownload(IReadOnlyList<PlaylistDownloadEntry> Entries, int Unavailable, int OverLimit)
 {
     /// <summary>Kurzer Satz für die Meldung nach dem Klick.</summary>
     public string Describe()
     {
+        var books = Entries.Count(e => e.EpisodeId is null);
+        var episodes = Entries.Count - books;
+        var what = (books, episodes) switch
+        {
+            (0, 0) => null,
+            (_, 0) => books == 1 ? "1 Buch" : $"{books} Bücher",
+            (0, _) => episodes == 1 ? "1 Folge" : $"{episodes} Folgen",
+            _ => $"{(books == 1 ? "1 Buch" : $"{books} Bücher")} und {(episodes == 1 ? "1 Folge" : $"{episodes} Folgen")}",
+        };
         var parts = new List<string>
         {
-            Books.Count switch
-            {
-                0 => "In dieser Liste ist kein Buch zum Herunterladen.",
-                1 => "1 Buch kommt in die Downloads.",
-                _ => $"{Books.Count} Bücher kommen in die Downloads.",
-            },
+            what is null ? "In dieser Liste ist nichts zum Herunterladen." : $"{what} {(Entries.Count == 1 ? "kommt" : "kommen")} in die Downloads.",
         };
-        if (Episodes > 0)
-            parts.Add(Episodes == 1 ? "1 Podcast-Folge bleibt aus: Folgen lassen sich noch nicht herunterladen."
-                : $"{Episodes} Podcast-Folgen bleiben aus: Folgen lassen sich noch nicht herunterladen.");
         if (Unavailable > 0) parts.Add(Unavailable == 1 ? "1 Eintrag ist nicht mehr verfügbar." : $"{Unavailable} Einträge sind nicht mehr verfügbar.");
-        if (OverLimit > 0) parts.Add($"Mehr als {PlaylistRules.MaxDownloadBooks} Bücher auf einmal gehen nicht, {OverLimit} bleiben aus.");
+        if (OverLimit > 0) parts.Add($"Mehr als {PlaylistRules.MaxDownloadEntries} Einträge auf einmal gehen nicht, {OverLimit} bleiben aus.");
         return string.Join(" ", parts);
     }
 }
 
+/// <summary>Live-Meldung zu einer Wiedergabeliste (nur Kennungen, kein Inhalt).</summary>
 public sealed record PlaylistChange(PlaylistChangeKind Kind, string PlaylistId, string LibraryId, string UserId);

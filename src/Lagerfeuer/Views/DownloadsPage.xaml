@@ -56,11 +56,11 @@
                                 Click="OnPlay"
                                 IsEnabled="{x:Bind CanPlay, Mode=OneWay}"
                                 Style="{StaticResource AccentButtonStyle}"
-                                Tag="{x:Bind ItemId}"
+                                Tag="{x:Bind Key}"
                                 ToolTipService.ToolTip="Abspielen">
                                 <FontIcon FontSize="14" Glyph="&#xE768;" />
                             </Button>
-                            <Button Click="OnRemove" Tag="{x:Bind ItemId}" ToolTipService.ToolTip="{x:Bind RemoveTooltip, Mode=OneWay}">
+                            <Button Click="OnRemove" Tag="{x:Bind Key}" ToolTipService.ToolTip="{x:Bind RemoveTooltip, Mode=OneWay}">
                                 <FontIcon FontSize="14" Glyph="{x:Bind RemoveGlyph, Mode=OneWay}" />
                             </Button>
                         </StackPanel>
@@ -79,9 +79,12 @@
             <FontIcon FontSize="48" Glyph="&#xE896;" Opacity="0.5" />
             <TextBlock HorizontalAlignment="Center" Text="Noch keine Downloads." />
             <TextBlock
+                MaxWidth="480"
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Lade Bücher über „Herunterladen“ auf der Buchseite, um sie offline zu hören." />
+                Text="Lade Bücher über „Herunterladen“ auf der Buchseite oder Podcast-Folgen über den Pfeil neben der Folge, um sie offline zu hören."
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
         </StackPanel>
     </Grid>
 </Page>
