@@ -2,7 +2,8 @@
 <Application
     x:Class="Lagerfeuer.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Lagerfeuer.Controls">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -15,6 +16,8 @@
                 kommen aus firestrike-branding, zusammen mit dessen Commit in .github/workflows/ci.yml.
                 Glut seit 0.2.8 etwas kräftiger, damit sie als Text auf jeder Fläche WCAG AA (4,5:1) erreicht (#66).
                 Überschriften in Stahl tief, Glut nur für Verweise und Akzente (#67).
+                Im Kontrastdesign zeigen alle Rollen und Pinsel auf Systemfarben wie im Export, die Akzentreihe bleibt die
+                des Systems (#93). Die Pinsel nehmen dort ThemeResource, damit sie einem Wechsel des Kontrastdesigns folgen.
             -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
@@ -86,7 +89,32 @@
                     <SolidColorBrush x:Key="NavigationViewContentBackground" Color="{StaticResource FsFlaecheColor}" />
                     <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="{StaticResource FsLinieColor}" />
                 </ResourceDictionary>
+
+                <ResourceDictionary x:Key="HighContrast">
+                    <StaticResource x:Key="FsGrundColor" ResourceKey="SystemColorWindowColor" />
+                    <StaticResource x:Key="FsFlaecheColor" ResourceKey="SystemColorWindowColor" />
+                    <StaticResource x:Key="FsFlaecheTiefColor" ResourceKey="SystemColorWindowColor" />
+                    <StaticResource x:Key="FsLinieColor" ResourceKey="SystemColorWindowTextColor" />
+                    <StaticResource x:Key="FsTextColor" ResourceKey="SystemColorWindowTextColor" />
+                    <StaticResource x:Key="FsTextLeiseColor" ResourceKey="SystemColorWindowTextColor" />
+                    <StaticResource x:Key="FsStahlTiefColor" ResourceKey="SystemColorWindowTextColor" />
+                    <StaticResource x:Key="FsGlutColor" ResourceKey="SystemColorHotlightColor" />
+                    <StaticResource x:Key="FsFunkeColor" ResourceKey="SystemColorHighlightColor" />
+
+                    <SolidColorBrush x:Key="LfBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LfLineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="LfHeadingBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="LfEmberBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="LfSparkBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
+
+            <!--  Hintergrund der Cover als ThemeResource: folgt einem Wechsel von Design und Kontrastdesign (#92)  -->
+            <Style TargetType="controls:CoverImage">
+                <Setter Property="Background" Value="{ThemeResource LfSurfaceDeepBrush}" />
+            </Style>
 
             <!--  Überschriften wie auf firestrike.de: Serifenschrift (Iowan Old Style → Palatino Linotype unter Windows)  -->
             <FontFamily x:Key="LfSerifFont">Palatino Linotype, Book Antiqua, Georgia</FontFamily>
