@@ -88,14 +88,21 @@ public sealed class DownloadManager
 
     /// <summary>
     /// Entfernt einen Download: lokale Dateien löschen, die Anheftung erst nach den Audiodaten. Bei einer Folge nur
-    /// deren Dateien, der Podcast-Ordner mit anderen Folgen bleibt. Lässt sich eine Datei nicht löschen (in
-    /// Benutzung, Zugriff verweigert), bleibt der Download angeheftet und mit seinen Daten bestehen (#85); was
-    /// schon gelöscht ist, lädt ein neuer Download wieder.
+    /// deren Dateien, der Podcast-Ordner mit anderen Folgen bleibt. Ohne Folge gehören alle Downloads des Eintrags
+    /// dazu, bei einem Podcast also auch die einzelner Folgen: Sie werden abgebrochen, ihre Zustände verschwinden
+    /// (#107). Lässt sich eine Datei nicht löschen (in Benutzung, Zugriff verweigert), bleibt der Download angeheftet
+    /// und mit seinen Daten bestehen (#85); was schon gelöscht ist, lädt ein neuer Download wieder.
     /// </summary>
     /// <returns>Null, wenn der Download entfernt ist, sonst ein kurzer Grund ohne Pfade für die Meldung.</returns>
     public string? Remove(string itemId, string? episodeId = null)
     {
-        Cancel(itemId, episodeId);
+        List<string> keys = episodeId is null
+            ? _states.Values.Where(s => s.ItemId == itemId).Select(s => s.Key).Append(Key(itemId)).Distinct().ToList()
+            : [Key(itemId, episodeId)];
+        foreach (var key in keys)
+        {
+            if (_states.TryGetValue(key, out var state) && state.IsActive) state.Cancellation.Cancel();
+        }
         try
         {
             if (episodeId is null) _cache.DeleteItem(itemId);
@@ -109,7 +116,7 @@ public sealed class DownloadManager
         }
         finally
         {
-            _states.TryRemove(Key(itemId, episodeId), out _);
+            foreach (var key in keys) _states.TryRemove(key, out _);
         }
     }
 

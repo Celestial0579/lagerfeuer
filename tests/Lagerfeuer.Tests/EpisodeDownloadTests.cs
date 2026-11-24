@@ -284,6 +284,70 @@ public class EpisodeDownloadTests : IDisposable
     }
 
     [Fact]
+    public void Entfernen_GanzerPodcast_FolgeMitGehashtemNamen_BleibtAngeheftetMitDaten()
+    {
+        // „CON“ ist eine schlichte Kennung, als Dateiname unter Windows aber verboten: Daten und Anheftung liegen
+        // unter h_… (#111). Auch dann gilt die Reihenfolge aus #85.
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var podcast = JsonSerializer.Deserialize<LibraryItem>(PodcastJson.Replace("\"ep1\"", "\"CON\""), AbsApiClient.Json)!;
+        var local = LocalItem.FromEpisode(podcast, podcast.Media.Episodes![0]);
+        cache.SaveLocalEpisode(local);
+        cache.SetEpisodePinned("pod", "CON", true);
+        var dir = cache.GetItemDirectory("pod");
+        Assert.Matches(@"\Aepisode_h_[0-9a-f]{32}\.json\z", Path.GetFileName(Assert.Single(Directory.GetFiles(dir, "episode_*"))));
+        var track = cache.GetTrackPath("pod", local.Tracks[0]);
+        Directory.CreateDirectory(track); // ein Track, der sich nicht löschen lässt, wie oben
+
+        Assert.Throws<UnauthorizedAccessException>(() => cache.DeleteItem("pod"));
+
+        Assert.True(cache.IsEpisodePinned("pod", "CON"));
+        Assert.NotNull(cache.GetLocalEpisode("pod", "CON"));
+        Directory.Delete(track);
+        cache.DeleteItem("pod");
+        Assert.False(Directory.Exists(dir));
+    }
+
+    [Fact]
+    public async Task Entfernen_GanzerPodcast_BrichtLaufendeFolgenDownloadsAb()
+    {
+        // Der Server hält die Audiodaten zurück, bis der Podcast entfernt ist (#107).
+        var files = new RangeFileServer(Audio);
+        var audio = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new FakeHandler(async req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path == "/api/items/pod") return FakeHandler.Json(PodcastJson);
+            if (!path.StartsWith("/api/items/pod/file/")) return FakeHandler.Status(HttpStatusCode.NotFound);
+            await audio.Task;
+            return await new HttpMessageInvoker(files.Handler).SendAsync(req, CancellationToken.None);
+        });
+        using var api = new AbsApiClient(handler);
+        api.Configure(new Uri("https://abs.test/"), files.Token, null);
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        var anderes = downloads.Enqueue("anderes"); // ein anderer Eintrag; der Server kennt ihn nicht
+        await WaitForEndAsync(downloads, "anderes", null);
+        var folge = downloads.Enqueue("pod", null, "ep1");
+        // Daten und Anheftung schreibt der Download gleich zu Beginn, dann wartet er auf die Audiodaten.
+        for (var i = 0; i < 400 && !cache.IsEpisodePinned("pod", "ep1"); i++) await Task.Delay(25, Ct);
+        Assert.True(folge.IsActive);
+
+        Assert.Null(downloads.Remove("pod"));
+
+        Assert.True(folge.Cancellation.IsCancellationRequested);
+        Assert.Null(downloads.Get("pod", "ep1"));
+        Assert.Same(anderes, downloads.Get("anderes"));
+        audio.SetResult();
+        for (var i = 0; i < 400 && folge.IsActive; i++) await Task.Delay(25, Ct);
+        Assert.False(folge.IsActive);
+        Assert.NotEqual(DownloadStatus.Completed, folge.Status);
+        Assert.False(cache.IsEpisodePinned("pod", "ep1"));
+        Assert.Null(cache.GetLocalEpisode("pod", "ep1"));
+    }
+
+    [Fact]
     public async Task Bereinigung_SchontAngehefteteFolgen_UndLoeschtDenRestDesPodcasts()
     {
         var (api, _) = CreateServer();
