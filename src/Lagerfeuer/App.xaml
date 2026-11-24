@@ -10,61 +10,81 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!--
-                Farbschema angelehnt an firestrike.de:
-                Glut #A24C18 / #DB7745 (Akzent), Funke #E8A33D / #F2B558, Stahl #33414B / #212B33 / #B4C6D1,
-                Grund #EFF0ED / #141715, Fläche #FFFFFF / #1C201D, Linie #C9CCC6 / #38403A, Text #1B1E1C / #E8EBE7.
+                Farben nach firestrike-branding (Tokens 1.2.0): Die Rollen heißen wie im WinUI-Export (FsGrundColor …),
+                die Akzentreihe ist die des Exports. Die CI gleicht beides mit `marke.py abgleichen` ab (#68). Neue Werte
+                kommen aus firestrike-branding, zusammen mit dessen Commit in .github/workflows/ci.yml.
                 Glut seit 0.2.8 etwas kräftiger, damit sie als Text auf jeder Fläche WCAG AA (4,5:1) erreicht (#66).
-                Werte nach firestrike-branding (Tokens 1.0.0); Überschriften in Stahl tief, Glut nur für Verweise und Akzente (#67).
+                Überschriften in Stahl tief, Glut nur für Verweise und Akzente (#67).
             -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <Color x:Key="SystemAccentColor">#A24C18</Color>
-                    <Color x:Key="SystemAccentColorLight1">#BE612E</Color>
+                    <Color x:Key="SystemAccentColorLight1">#CF6028</Color>
                     <Color x:Key="SystemAccentColorLight2">#DB7745</Color>
-                    <Color x:Key="SystemAccentColorLight3">#E8A33D</Color>
+                    <Color x:Key="SystemAccentColorLight3">#F2B558</Color>
                     <Color x:Key="SystemAccentColorDark1">#A24C18</Color>
-                    <Color x:Key="SystemAccentColorDark2">#8A3F12</Color>
-                    <Color x:Key="SystemAccentColorDark3">#6B310D</Color>
+                    <Color x:Key="SystemAccentColorDark2">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorDark3">#7E3B13</Color>
 
-                    <SolidColorBrush x:Key="LfBackgroundBrush" Color="#EFF0ED" />
-                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="#E3E5E1" />
-                    <SolidColorBrush x:Key="LfLineBrush" Color="#C9CCC6" />
-                    <SolidColorBrush x:Key="LfHeadingBrush" Color="#212B33" />
-                    <SolidColorBrush x:Key="LfEmberBrush" Color="#A24C18" />
-                    <SolidColorBrush x:Key="LfSparkBrush" Color="#E8A33D" />
+                    <Color x:Key="FsGrundColor">#EFF0ED</Color>
+                    <Color x:Key="FsFlaecheColor">#FFFFFF</Color>
+                    <Color x:Key="FsFlaecheTiefColor">#E3E5E1</Color>
+                    <Color x:Key="FsLinieColor">#C9CCC6</Color>
+                    <Color x:Key="FsTextColor">#1B1E1C</Color>
+                    <Color x:Key="FsTextLeiseColor">#5A605B</Color>
+                    <Color x:Key="FsStahlTiefColor">#212B33</Color>
+                    <Color x:Key="FsGlutColor">#A24C18</Color>
+                    <Color x:Key="FsFunkeColor">#E8A33D</Color>
 
-                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#1B1E1C" />
-                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#5A605B" />
+                    <SolidColorBrush x:Key="LfBackgroundBrush" Color="{StaticResource FsGrundColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="{StaticResource FsFlaecheColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="{StaticResource FsFlaecheTiefColor}" />
+                    <SolidColorBrush x:Key="LfLineBrush" Color="{StaticResource FsLinieColor}" />
+                    <SolidColorBrush x:Key="LfHeadingBrush" Color="{StaticResource FsStahlTiefColor}" />
+                    <SolidColorBrush x:Key="LfEmberBrush" Color="{StaticResource FsGlutColor}" />
+                    <SolidColorBrush x:Key="LfSparkBrush" Color="{StaticResource FsFunkeColor}" />
+
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{StaticResource FsTextColor}" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{StaticResource FsTextLeiseColor}" />
                     <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
                     <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#C9CCC6" />
+                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="{StaticResource FsFlaecheColor}" />
+                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="{StaticResource FsLinieColor}" />
                 </ResourceDictionary>
 
                 <ResourceDictionary x:Key="Dark">
                     <Color x:Key="SystemAccentColor">#A24C18</Color>
-                    <Color x:Key="SystemAccentColorLight1">#BE612E</Color>
+                    <Color x:Key="SystemAccentColorLight1">#CF6028</Color>
                     <Color x:Key="SystemAccentColorLight2">#DB7745</Color>
-                    <Color x:Key="SystemAccentColorLight3">#E8A33D</Color>
+                    <Color x:Key="SystemAccentColorLight3">#F2B558</Color>
                     <Color x:Key="SystemAccentColorDark1">#A24C18</Color>
-                    <Color x:Key="SystemAccentColorDark2">#8A3F12</Color>
-                    <Color x:Key="SystemAccentColorDark3">#6B310D</Color>
+                    <Color x:Key="SystemAccentColorDark2">#A24C18</Color>
+                    <Color x:Key="SystemAccentColorDark3">#7E3B13</Color>
 
-                    <SolidColorBrush x:Key="LfBackgroundBrush" Color="#141715" />
-                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="#1C201D" />
-                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="#262B27" />
-                    <SolidColorBrush x:Key="LfLineBrush" Color="#38403A" />
-                    <SolidColorBrush x:Key="LfHeadingBrush" Color="#B4C6D1" />
-                    <SolidColorBrush x:Key="LfEmberBrush" Color="#DB7745" />
-                    <SolidColorBrush x:Key="LfSparkBrush" Color="#F2B558" />
+                    <Color x:Key="FsGrundColor">#141715</Color>
+                    <Color x:Key="FsFlaecheColor">#1C201D</Color>
+                    <Color x:Key="FsFlaecheTiefColor">#262B27</Color>
+                    <Color x:Key="FsLinieColor">#38403A</Color>
+                    <Color x:Key="FsTextColor">#E8EBE7</Color>
+                    <Color x:Key="FsTextLeiseColor">#A5ADA6</Color>
+                    <Color x:Key="FsStahlTiefColor">#B4C6D1</Color>
+                    <Color x:Key="FsGlutColor">#DB7745</Color>
+                    <Color x:Key="FsFunkeColor">#F2B558</Color>
 
-                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E8EBE7" />
-                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A5ADA6" />
+                    <SolidColorBrush x:Key="LfBackgroundBrush" Color="{StaticResource FsGrundColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceBrush" Color="{StaticResource FsFlaecheColor}" />
+                    <SolidColorBrush x:Key="LfSurfaceDeepBrush" Color="{StaticResource FsFlaecheTiefColor}" />
+                    <SolidColorBrush x:Key="LfLineBrush" Color="{StaticResource FsLinieColor}" />
+                    <SolidColorBrush x:Key="LfHeadingBrush" Color="{StaticResource FsStahlTiefColor}" />
+                    <SolidColorBrush x:Key="LfEmberBrush" Color="{StaticResource FsGlutColor}" />
+                    <SolidColorBrush x:Key="LfSparkBrush" Color="{StaticResource FsFunkeColor}" />
+
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{StaticResource FsTextColor}" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{StaticResource FsTextLeiseColor}" />
                     <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
                     <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="#1C201D" />
-                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#38403A" />
+                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="{StaticResource FsFlaecheColor}" />
+                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="{StaticResource FsLinieColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

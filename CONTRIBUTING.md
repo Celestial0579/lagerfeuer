@@ -22,7 +22,7 @@ dotnet test --project tests/Lagerfeuer.Tests/Lagerfeuer.Tests.csproj
 ## Pull Requests
 
 - Ein Thema pro Pull Request.
-- Die CI (Tests und Build für x64/ARM64) muss grün sein.
+- Die CI (Tests, Build für x64/ARM64 und der Abgleich der Farben) muss grün sein.
 - Mit dem Einreichen stimmst du zu, dass dein Beitrag unter der [GPL-3.0](LICENSE) steht.
 
 ## Releases
