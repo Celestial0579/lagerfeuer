@@ -104,10 +104,18 @@ def setter_farbe(eintrag: dict) -> bool:
     return lokal(eintrag["tag"]) == "Setter" and ist_farb_eigenschaft(ziel)
 
 
-def animation_farbe(eintrag: dict) -> bool:
-    """Animiert das Element eine Farb-Eigenschaft (Storyboard.TargetProperty="Foreground" …)?"""
-    ziel = eintrag["attribute"].get("Storyboard.TargetProperty", "")
-    return bool(ziel) and ist_farb_eigenschaft(ziel)
+def animation_farbe(stapel: list[dict]) -> bool:
+    """
+    Animiert das Schlüsselbild am Ende des Stapels eine Farb-Eigenschaft (Storyboard.TargetProperty="Foreground" …)?
+    Es zählt der nächste Vorfahr mit Storyboard.TargetProperty, meist die Animation selbst. Steht der Wert nur weiter
+    oben, etwa am Storyboard oder über einem Element <….KeyFrames>, zählt er auch (#102); so bleibt die Prüfung
+    auf der sicheren Seite.
+    """
+    for vorfahr in reversed(stapel[:-1]):
+        ziel = vorfahr["attribute"].get("Storyboard.TargetProperty", "").strip()
+        if ziel:
+            return ist_farb_eigenschaft(ziel)
+    return False
 
 
 def farbwert_attribute(stapel: list[dict], eintrag: dict) -> set[str]:
@@ -123,7 +131,7 @@ def farbwert_attribute(stapel: list[dict], eintrag: dict) -> set[str]:
         return {"To", "From", "By"}
     if tag.endswith("ColorKeyFrame"):
         return {"Value"}
-    if tag.endswith("KeyFrame") and len(stapel) >= 2 and animation_farbe(stapel[-2]):
+    if tag.endswith("KeyFrame") and animation_farbe(stapel):
         return {"Value"}
     return set()
 

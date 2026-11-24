@@ -105,10 +105,24 @@ FAELLE: list[tuple[str, int, dict]] = [
      {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A4"><ObjectAnimationUsingKeyFrames '
               'Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed" />'
               '</ObjectAnimationUsingKeyFrames></Storyboard></Page.Resources>')]}),
+    # Ohne Storyboard.TargetProperty, damit nur der Zweig für …ColorKeyFrame den Namen findet (#102).
     ("Farb-Schlüsselbild mit Farbname", 1, 'LinearColorKeyFrame Value="Red": Farbname',
-     {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A5"><ColorAnimationUsingKeyFrames '
-              'Storyboard.TargetProperty="Color"><LinearColorKeyFrame KeyTime="0" Value="Red" />'
-              '</ColorAnimationUsingKeyFrames></Storyboard></Page.Resources>')]}),
+     {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A5"><ColorAnimationUsingKeyFrames>'
+              '<LinearColorKeyFrame KeyTime="0" Value="Red" /></ColorAnimationUsingKeyFrames></Storyboard>'
+              '</Page.Resources>')]}),
+    ("Schlüsselbild mit Foreground am Storyboard", 1, 'DiscreteObjectKeyFrame Value="Red": Farbname',
+     {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A6" Storyboard.TargetProperty="Foreground">'
+              '<ObjectAnimationUsingKeyFrames><DiscreteObjectKeyFrame KeyTime="0" Value="Red" />'
+              '</ObjectAnimationUsingKeyFrames></Storyboard></Page.Resources>')]}),
+    ("Schlüsselbild bei Visibility, Storyboard mit Foreground", 0, None,
+     {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A7" Storyboard.TargetProperty="Foreground">'
+              '<ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame '
+              'KeyTime="0" Value="Collapsed" /></ObjectAnimationUsingKeyFrames></Storyboard></Page.Resources>')]}),
+    ("Schlüsselbild im Element KeyFrames", 1, 'DiscreteObjectKeyFrame Value="Red": Farbname',
+     {BUCH: [("re:(<Page\\b[^>]*>)", '\\1<Page.Resources><Storyboard x:Key="A8"><ObjectAnimationUsingKeyFrames '
+              'Storyboard.TargetProperty="Foreground"><ObjectAnimationUsingKeyFrames.KeyFrames><DiscreteObjectKeyFrame '
+              'KeyTime="0" Value="Red" /></ObjectAnimationUsingKeyFrames.KeyFrames></ObjectAnimationUsingKeyFrames>'
+              '</Storyboard></Page.Resources>')]}),
 ]
 
 
