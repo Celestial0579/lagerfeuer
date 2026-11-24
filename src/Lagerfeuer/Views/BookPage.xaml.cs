@@ -227,6 +227,7 @@ public sealed partial class BookPage : Page
     {
         if (_item is null) return;
         var id = _item.Id;
+        var title = _item.Media.Metadata.Title;
         if (App.Downloads.Get(id) is { IsActive: true })
         {
             App.Downloads.Cancel(id);
@@ -238,18 +239,19 @@ public sealed partial class BookPage : Page
             {
                 XamlRoot = XamlRoot,
                 Title = "Download entfernen?",
-                Content = $"„{_item.Media.Metadata.Title}“ wird von diesem Gerät gelöscht. Dein Hörfortschritt bleibt erhalten.",
+                Content = $"„{title}“ wird von diesem Gerät gelöscht. Dein Hörfortschritt bleibt erhalten.",
                 PrimaryButtonText = "Entfernen",
                 CloseButtonText = "Abbrechen",
                 DefaultButton = ContentDialogButton.Close,
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
             if (App.Player.ItemId == id) await App.Player.StopAsync();
-            await Task.Run(() => App.Downloads.Remove(id));
+            if (await Task.Run(() => App.Downloads.Remove(id)) is { } reason)
+                App.MainWindow.ShowError(DownloadManager.RemoveFailedMessage(title, reason));
             UpdateDownloadState();
             return;
         }
-        App.Downloads.Enqueue(id, _item.Media.Metadata.Title);
+        App.Downloads.Enqueue(id, title);
     }
 
     private void OnPlay(object sender, RoutedEventArgs e)

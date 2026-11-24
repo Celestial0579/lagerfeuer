@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.Versioning;
 using System.Text;
 
 namespace Lagerfeuer.Tests;
@@ -103,4 +104,35 @@ internal sealed class TempDir : IDisposable
         try { Directory.Delete(Path, recursive: true); }
         catch { /* Datei evtl. noch offen – egal */ }
     }
+}
+
+/// <summary>
+/// Lässt eine Datei nicht löschen, bis Dispose aufgerufen wird (#85). Unter Windows ist sie schreibgeschützt, sonst
+/// ihr Ordner. Das Löschen ergibt dann eine <see cref="UnauthorizedAccessException"/>.
+/// </summary>
+internal sealed class DeleteDenied : IDisposable
+{
+    private readonly Action _undo;
+
+    private DeleteDenied(Action undo) => _undo = undo;
+
+    public static DeleteDenied For(string file)
+    {
+        if (!OperatingSystem.IsWindows()) return ForUnix(file);
+        File.SetAttributes(file, File.GetAttributes(file) | FileAttributes.ReadOnly);
+        return new DeleteDenied(() => File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly));
+    }
+
+    /// <summary>Unter Unix entscheidet der Ordner, ob eine Datei gelöscht werden darf. Für root gilt das nicht.</summary>
+    [UnsupportedOSPlatform("windows")]
+    private static DeleteDenied ForUnix(string file)
+    {
+        Assert.SkipWhen(Environment.IsPrivilegedProcess, "Als root lässt sich jede Datei löschen.");
+        var dir = Path.GetDirectoryName(file)!;
+        var mode = File.GetUnixFileMode(dir);
+        File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        return new DeleteDenied(() => File.SetUnixFileMode(dir, mode));
+    }
+
+    public void Dispose() => _undo();
 }

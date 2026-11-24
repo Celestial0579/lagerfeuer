@@ -246,5 +246,64 @@ public class DownloadManagerTests : IDisposable
         Assert.Null(downloads.Get("buch"));
     }
 
+    [Fact]
+    public async Task Entfernen_ZugriffVerweigert_DownloadBleibtUndNenntDenGrund()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("buch");
+        await WaitForEndAsync(downloads, "buch");
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        var track = cache.GetTrackPath("buch", cache.GetLocalItem("buch")!.Tracks[1]);
+
+        string? reason;
+        using (DeleteDenied.For(track))
+            reason = downloads.Remove("buch"); // bis #85: UnauthorizedAccessException bis in die Oberfläche
+
+        Assert.Equal("Zugriff verweigert", reason);
+        // Anheftung und Daten bleiben: weiter ein Download, kein angehefteter Rest und kein gewöhnlicher Cache.
+        Assert.True(cache.IsPinned("buch"));
+        Assert.NotNull(cache.GetLocalItem("buch"));
+        Assert.True(File.Exists(track));
+        Assert.Null(downloads.Get("buch"));
+
+        Assert.Null(downloads.Remove("buch"));
+        Assert.False(Directory.Exists(cache.GetItemDirectory("buch")));
+    }
+
+    [Fact]
+    public async Task Entfernen_DateiInBenutzung_DownloadBleibtUndNenntDenGrund()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Nur Windows verweigert das Löschen einer geöffneten Datei.");
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("buch");
+        await WaitForEndAsync(downloads, "buch");
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        var track = cache.GetTrackPath("buch", cache.GetLocalItem("buch")!.Tracks[0]);
+
+        string? reason;
+        using (new FileStream(track, FileMode.Open, FileAccess.Read, FileShare.Read))
+            reason = downloads.Remove("buch");
+
+        Assert.Equal("Datei wird von einem anderen Programm verwendet", reason);
+        Assert.True(cache.IsPinned("buch"));
+        Assert.NotNull(cache.GetLocalItem("buch"));
+
+        Assert.Null(downloads.Remove("buch"));
+        Assert.False(Directory.Exists(cache.GetItemDirectory("buch")));
+    }
+
+    [Theory]
+    [InlineData("Das Buch", "„Das Buch“ konnte nicht vollständig gelöscht werden: Zugriff verweigert. Versuch es später noch einmal.")]
+    [InlineData(null, "Der Download konnte nicht vollständig gelöscht werden: Zugriff verweigert. Versuch es später noch einmal.")]
+    [InlineData(" ", "Der Download konnte nicht vollständig gelöscht werden: Zugriff verweigert. Versuch es später noch einmal.")]
+    public void Entfernen_Meldung_NenntTitelUndGrund(string? title, string expected)
+        => Assert.Equal(expected, DownloadManager.RemoveFailedMessage(title, "Zugriff verweigert"));
+
     public void Dispose() => _dir.Dispose();
 }

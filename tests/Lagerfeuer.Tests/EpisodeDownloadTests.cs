@@ -173,6 +173,30 @@ public class EpisodeDownloadTests : IDisposable
     }
 
     [Fact]
+    public async Task Entfernen_ZugriffVerweigert_FolgeBleibtUndNenntDenGrund()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("pod", null, "ep1");
+        await WaitForEndAsync(downloads, "pod", "ep1");
+        await Task.Delay(200, Ct);
+        var track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep1")!.Tracks[0]);
+
+        string? reason;
+        using (DeleteDenied.For(track))
+            reason = downloads.Remove("pod", "ep1");
+
+        Assert.Equal("Zugriff verweigert", reason);
+        Assert.True(cache.IsEpisodePinned("pod", "ep1"));
+        Assert.True(cache.IsAvailableOffline(cache.GetLocalEpisode("pod", "ep1")!));
+
+        Assert.Null(downloads.Remove("pod", "ep1"));
+        Assert.False(Directory.Exists(cache.GetItemDirectory("pod")));
+    }
+
+    [Fact]
     public async Task Bereinigung_SchontAngehefteteFolgen_UndLoeschtDenRestDesPodcasts()
     {
         var (api, _) = CreateServer();
@@ -217,6 +241,33 @@ public class EpisodeDownloadTests : IDisposable
         Assert.True(File.Exists(track));
         Assert.True(File.Exists(streamed));
         Assert.True(cache.IsEpisodePinned("pod", "ep1"));
+    }
+
+    [Fact]
+    public async Task Bereinigung_GestreamteDateiGeschuetzt_RaeumtDieUebrigenOrdnerTrotzdemAuf()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("pod", null, "ep1");
+        await WaitForEndAsync(downloads, "pod", "ep1");
+        await Task.Delay(200, Ct);
+        var podcast = cache.GetItemDirectory("pod");
+        var streamed = Path.Combine(podcast, "002_gestreamt.mp3");
+        File.WriteAllBytes(streamed, [1, 2, 3]);
+        foreach (var file in Directory.GetFiles(podcast)) File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-3));
+        var other = Directory.CreateDirectory(Path.Combine(_dir.Path, "anderes")).FullName;
+        File.WriteAllBytes(Path.Combine(other, "001_track.mp3"), new byte[100]);
+        File.SetLastWriteTimeUtc(Path.Combine(other, "001_track.mp3"), DateTime.UtcNow.AddDays(-2));
+
+        using (DeleteDenied.For(streamed))
+            cache.EnforceLimit(0, []);
+
+        // Bis #85 brach die Bereinigung am Podcast ab, und das Buch danach blieb liegen.
+        Assert.False(Directory.Exists(other));
+        Assert.True(File.Exists(streamed));
+        Assert.True(cache.IsAvailableOffline(cache.GetLocalEpisode("pod", "ep1")!));
     }
 
     [Fact]

@@ -87,28 +87,36 @@ public sealed class DownloadManager
     }
 
     /// <summary>
-    /// Entfernt einen Download: Anheftung lösen und lokale Dateien löschen. Bei einer Folge nur deren Dateien,
-    /// der Podcast-Ordner mit anderen Folgen bleibt.
+    /// Entfernt einen Download: lokale Dateien löschen, die Anheftung erst nach den Audiodaten. Bei einer Folge nur
+    /// deren Dateien, der Podcast-Ordner mit anderen Folgen bleibt. Lässt sich eine Datei nicht löschen (in
+    /// Benutzung, Zugriff verweigert), bleibt der Download angeheftet und mit seinen Daten bestehen (#85); was
+    /// schon gelöscht ist, lädt ein neuer Download wieder.
     /// </summary>
-    public void Remove(string itemId, string? episodeId = null)
+    /// <returns>Null, wenn der Download entfernt ist, sonst ein kurzer Grund ohne Pfade für die Meldung.</returns>
+    public string? Remove(string itemId, string? episodeId = null)
     {
         Cancel(itemId, episodeId);
         try
         {
-            if (episodeId is null)
-            {
-                _cache.SetPinned(itemId, false);
-                _cache.DeleteItem(itemId);
-            }
-            else
-            {
-                _cache.SetEpisodePinned(itemId, episodeId, false);
-                _cache.DeleteEpisode(itemId, episodeId);
-            }
+            if (episodeId is null) _cache.DeleteItem(itemId);
+            else _cache.DeleteEpisode(itemId, episodeId);
+            return null;
         }
-        catch (IOException ex) { Log.Error($"Download {Key(itemId, episodeId)} konnte nicht vollständig gelöscht werden (in Benutzung?)", ex); }
-        _states.TryRemove(Key(itemId, episodeId), out _);
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Error($"Download {Key(itemId, episodeId)} konnte nicht vollständig gelöscht werden", ex);
+            return UpdateService.FailureReason(ex);
+        }
+        finally
+        {
+            _states.TryRemove(Key(itemId, episodeId), out _);
+        }
     }
+
+    /// <summary>Meldung, wenn <see cref="Remove"/> einen Download nicht vollständig löschen konnte.</summary>
+    public static string RemoveFailedMessage(string? title, string reason)
+        => $"{(string.IsNullOrWhiteSpace(title) ? "Der Download" : $"„{title}“")} konnte nicht vollständig gelöscht werden: {reason}. " +
+           "Versuch es später noch einmal.";
 
     private async Task WorkerAsync()
     {

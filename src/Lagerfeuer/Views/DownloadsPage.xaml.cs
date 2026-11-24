@@ -170,7 +170,8 @@ public sealed partial class DownloadsPage : Page
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         if (App.Player.ItemId == id && (episodeId is null || App.Player.EpisodeId == episodeId)) await App.Player.StopAsync();
-        await Task.Run(() => App.Downloads.Remove(id, episodeId));
+        if (await Task.Run(() => App.Downloads.Remove(id, episodeId)) is { } reason)
+            App.MainWindow.ShowError(DownloadManager.RemoveFailedMessage(vm?.Title, reason));
         await RefreshAsync();
     }
 }

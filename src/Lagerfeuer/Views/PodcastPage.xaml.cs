@@ -195,7 +195,8 @@ public sealed partial class PodcastPage : Page
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
             if (App.Player.ItemId == itemId && App.Player.EpisodeId == episodeId) await App.Player.StopAsync();
-            await Task.Run(() => App.Downloads.Remove(itemId, episodeId));
+            if (await Task.Run(() => App.Downloads.Remove(itemId, episodeId)) is { } reason)
+                App.MainWindow.ShowError(DownloadManager.RemoveFailedMessage(ep.Title, reason));
             await RefreshDownloadsAsync();
             return;
         }
