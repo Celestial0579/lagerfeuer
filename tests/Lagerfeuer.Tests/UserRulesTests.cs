@@ -46,4 +46,47 @@ public class UserRulesTests
         now = now.AddMinutes(-5);
         Assert.True(throttle.TryStart());
     }
+
+    private static AbsUser Rights(bool update, bool delete)
+        => new() { Id = "u1", Type = "user", Permissions = new UserPermissions { Update = update, Delete = delete } };
+
+    [Fact]
+    public void Antwort_EinerAelterenNachfrage_UeberschreibtNeuereRechteNicht()
+    {
+        var order = new RightsSequence();
+        var user = Rights(false, false);
+        var older = order.Begin();
+        var newer = order.Begin();
+
+        Assert.True(order.TakeAnswer(newer, user, Rights(true, false)));
+        Assert.False(order.TakeAnswer(older, user, Rights(false, false))); // kommt als letzte an (#87)
+
+        Assert.Equal(new CollectionRules.Rights(true, false), CollectionRules.For(user));
+    }
+
+    [Fact]
+    public void Antwort_NachEinerLiveMeldungMitRechten_GiltNicht()
+    {
+        var order = new RightsSequence();
+        var user = Rights(true, true);
+        var ticket = order.Begin();
+
+        Assert.True(order.TakeUpdate(user, Rights(false, false)));
+        Assert.False(order.TakeAnswer(ticket, user, Rights(true, true)));
+
+        Assert.Equal(new CollectionRules.Rights(false, false), CollectionRules.For(user));
+    }
+
+    [Fact]
+    public void LiveMeldungOhneRechte_LaesstDieLaufendeNachfrageGelten()
+    {
+        var order = new RightsSequence();
+        var user = Rights(false, false);
+        var ticket = order.Begin();
+
+        Assert.False(order.TakeUpdate(user, new AbsUser { Id = "u1" }));
+        Assert.True(order.TakeAnswer(ticket, user, Rights(true, true)));
+
+        Assert.Equal(new CollectionRules.Rights(true, true), CollectionRules.For(user));
+    }
 }

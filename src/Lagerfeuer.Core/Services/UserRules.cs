@@ -36,3 +36,34 @@ public sealed class RightsRefreshThrottle(TimeSpan minInterval, Func<DateTimeOff
         return true;
     }
 }
+
+/// <summary>
+/// Welche Angabe zu den Rechten die jüngste ist (#87). Jede Nachfrage bei <c>/api/me</c> zieht beim Start eine
+/// Nummer, ebenso jede Live-Meldung <c>user_updated</c>, die Rechte trägt. Eine Antwort gilt nur, wenn seit ihrer
+/// Nachfrage nichts Jüngeres kam: Sonst überschriebe eine ältere Antwort, die als letzte ankommt, neuere Rechte.
+/// </summary>
+public sealed class RightsSequence
+{
+    private long _last;
+
+    /// <summary>Eine Nachfrage beginnt: ihre Nummer für <see cref="TakeAnswer"/>.</summary>
+    public long Begin() => Interlocked.Increment(ref _last);
+
+    /// <summary>
+    /// Übernimmt Typ und Rechte aus der Antwort der Nachfrage <paramref name="ticket"/>, wenn sie noch die jüngste
+    /// ist. Liefert wie <see cref="CollectionRules.TakeRights"/>, ob sich etwas geändert hat.
+    /// </summary>
+    public bool TakeAnswer(long ticket, AbsUser target, AbsUser answer)
+        => Interlocked.Read(ref _last) == ticket && CollectionRules.TakeRights(target, answer);
+
+    /// <summary>
+    /// Übernimmt Typ und Rechte aus einer Live-Meldung sofort. Trägt sie welche, gelten Antworten auf Nachfragen, die
+    /// vorher begonnen haben, nicht mehr. Eine Meldung ohne Rechte ändert nichts.
+    /// </summary>
+    public bool TakeUpdate(AbsUser target, AbsUser update)
+    {
+        if (update.Type is null || update.Permissions is null) return false;
+        Interlocked.Increment(ref _last);
+        return CollectionRules.TakeRights(target, update);
+    }
+}

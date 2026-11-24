@@ -42,13 +42,20 @@ public partial class App : Application
     /// </summary>
     public static CollectionRules.Rights CollectionRights => CollectionRules.For(User);
 
-    /// <summary>Rechte des Nutzers neu vom Server holen, z. B. nachdem er 403 gemeldet hat. True, wenn sie sich geändert haben.</summary>
+    /// <summary>Welche Angabe zu den Rechten die jüngste ist: Nachfragen und Live-Meldungen (#87).</summary>
+    private static readonly RightsSequence RightsOrder = new();
+
+    /// <summary>
+    /// Rechte des Nutzers neu vom Server holen, z. B. nachdem er 403 gemeldet hat. True, wenn sie sich geändert haben.
+    /// Kam inzwischen eine jüngere Nachfrage oder eine Live-Meldung mit Rechten, gilt deren Stand (#87).
+    /// </summary>
     public static async Task<bool> RefreshRightsAsync()
     {
+        var ticket = RightsOrder.Begin();
         try
         {
             var me = await Api.GetMeAsync();
-            return User is not null && UserRules.IsCurrentUser(User, me) && CollectionRules.TakeRights(User, me);
+            return User is not null && UserRules.IsCurrentUser(User, me) && RightsOrder.TakeAnswer(ticket, User, me);
         }
         catch (Exception ex)
         {
@@ -160,8 +167,8 @@ public partial class App : Application
             User.Bookmarks = user.Bookmarks;
             RaiseBookmarksChanged();
             // Rechte aus der Meldung gleich übernehmen (#81). Ändert ein Verwalter sie, kommt keine Meldung;
-            // dafür fragt RefreshRightsIfDueAsync nach.
-            if (CollectionRules.TakeRights(User, user)) Views.PlaylistUi.NotifyCollectionRightsChanged();
+            // dafür fragt RefreshRightsIfDueAsync nach. Eine laufende Nachfrage überschreibt sie nicht mehr (#87).
+            if (RightsOrder.TakeUpdate(User, user)) Views.PlaylistUi.NotifyCollectionRightsChanged();
         });
         MainWindow = new MainWindow();
         MainWindow.Activate();
