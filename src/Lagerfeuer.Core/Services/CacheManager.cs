@@ -287,13 +287,35 @@ public sealed class CacheManager(AbsApiClient api, string root)
         var dir = GetItemDirectory(itemId);
         if (!Directory.Exists(dir)) return;
         foreach (var episode in Directory.EnumerateFiles(dir, EpisodeFilePrefix + "*.json").ToList())
-            DeleteEpisode(itemId, Path.GetFileNameWithoutExtension(episode)[EpisodeFilePrefix.Length..]);
+            DeleteEpisode(itemId, EpisodeIdOf(itemId, episode));
         if (!Directory.Exists(dir)) return; // Mit der letzten Folge ist der leere Ordner schon gegangen.
         var files = Directory.EnumerateFiles(dir).ToList();
         foreach (var file in files.Where(f => !IsPinMarker(f) && !IsDataFile(f))) File.Delete(file);
         foreach (var file in files.Where(IsPinMarker)) File.Delete(file);
         foreach (var file in files.Where(IsDataFile)) File.Delete(file);
         Directory.Delete(dir, recursive: true);
+    }
+
+    /// <summary>
+    /// Kennung der Folge zu ihrer Datendatei im Ordner des Podcasts. Im Dateinamen steht die Form aus
+    /// <see cref="CachePaths.SafeId"/>, bei einer ungewöhnlichen Kennung also h_…; die echte Kennung steht in den Daten.
+    /// Sie gilt, wenn sie wieder genau auf diese Datei führt, sonst bleibt es beim Dateinamen (#111).
+    /// </summary>
+    private string EpisodeIdOf(string itemId, string dataFile)
+    {
+        var fromName = Path.GetFileNameWithoutExtension(dataFile)[EpisodeFilePrefix.Length..];
+        try
+        {
+            var local = JsonSerializer.Deserialize<LocalItem>(File.ReadAllText(dataFile), AbsApiClient.Json);
+            if (local?.EpisodeId is { } id && local.LibraryItemId == itemId &&
+                string.Equals(EpisodeFilePath(itemId, id), Path.GetFullPath(dataFile), StringComparison.OrdinalIgnoreCase))
+                return id;
+        }
+        catch (Exception)
+        {
+            // Unlesbare Daten: DeleteEpisode findet dann keine Tracks, die nimmt der Schritt für den Rest (#105).
+        }
+        return fromName;
     }
 
     /// <summary>Anheftung eines Buchs (.pinned) oder einer Folge (.pinned_…).</summary>
