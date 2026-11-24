@@ -155,7 +155,7 @@ Das Setup hat eine eigene Prüfung ([`tests/installer/Test-Installer.ps1`](tests
 ./tests/installer/Test-Installer.ps1
 ```
 
-Die Farben in `src/Lagerfeuer/App.xaml` gleicht der Job „Farben (firestrike-branding)“ mit den Tokens von [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) ab, und zwar auf dem Commit, der in `ci.yml` als `BRANDING_COMMIT` steht. Neue Farben kommen von dort; einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo. Von Hand (Python 3.10 oder neuer):
+Die Farben in `src/Lagerfeuer/App.xaml` gleicht der Job „Farben (firestrike-branding)“ mit den Tokens von [firestrike-branding](https://github.com/Celestial0579/firestrike-branding) ab, und zwar auf dem Commit, der in `ci.yml` als `BRANDING_COMMIT` steht. Neue Farben kommen von dort; einen neueren Commit zu übernehmen ist ein bewusster Schritt in diesem Repo. Daneben lehnt der Job feste Farbwerte außerhalb der Rollen (`Fs…Color`) und der Akzentreihe ab, denn die Pinsel sollen auf eine Rolle zeigen. Von Hand (Python 3.10 oder neuer):
 
 ```bash
 git clone --quiet https://github.com/Celestial0579/firestrike-branding.git ../firestrike-branding
