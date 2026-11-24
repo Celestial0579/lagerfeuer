@@ -62,6 +62,10 @@ jobs:
       - name: Keine festen Farbwerte neben den Rollen
         run: python3 build/farben-pruefen.py --export "$RUNNER_TEMP/marke/exporte/winui/Firestrike.xaml"
 
+      # Die Prüffälle halten die Prüfung davon ab, bei späteren Änderungen still schwächer zu werden (#99).
+      - name: Prüffälle der Farbprüfung
+        run: python3 tests/farben/pruefe.py --export "$RUNNER_TEMP/marke/exporte/winui/Firestrike.xaml"
+
   # Baut aus installer/Lagerfeuer.nsi ein Probe-Setup mit winziger Nutzlast und prüft, dass es keine fremden
   # Programme startet, die neben ihm liegen (tests/installer/Test-Installer.ps1).
   installer:
