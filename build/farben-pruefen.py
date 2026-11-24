@@ -13,6 +13,9 @@ Dazu das Kontrastdesign von App.xaml: Das Wörterbuch HighContrast muss es geben
 dort auf eine Systemfarbe, und jeder eigene Pinsel (Lf…Brush) per ThemeResource auf dieselbe Systemfarbe wie seine
 Rolle. Ob die Systemfarbe je Rolle die des Exports ist, prüft `marke.py abgleichen`.
 
+Und Hell und Dunkel vollständig (#104): Light und Dark führen dieselben Schlüssel, beide die ganze Akzentreihe des
+Exports, und jeder Verweis auf eine Rolle zeigt auf eine Rolle im selben Wörterbuch.
+
     python3 build/farben-pruefen.py --export PFAD/exporte/winui/Firestrike.xaml
 
 Exit-Code 0: keine festen Farbwerte, 1: Funde (je Fund Datei, Zeile und Wert), 2: Aufruf, Export oder eine Datei
@@ -269,6 +272,63 @@ def kontrast_pruefen(pfad: Path, erlaubt: set[str]) -> tuple[list[str], int, int
     return funde, len(rollen), pinsel
 
 
+def themen_pruefen(pfad: Path, erlaubt: set[str]) -> tuple[list[str], int]:
+    """
+    Hell und Dunkel vollständig (#104): Light und Dark von App.xaml führen dieselben Schlüssel, und beide alle Stufen
+    der Akzentreihe aus dem Export. Jeder Verweis auf eine Rolle (Fs…) in Light oder Dark zeigt auf eine Rolle
+    desselben Wörterbuchs. Sonst gälte in einem Design die Akzentfarbe von Windows statt Glut, oder ein Pinsel zeigte
+    auf eine Rolle, die es dort nicht gibt. Gibt die Funde und die Zahl der Schlüssel zurück, die beide Wörterbücher
+    führen.
+    """
+    zeile_von: dict[str, int] = {}
+    schluessel: dict[str, dict[str, int]] = {}
+    verweise: list[tuple[str, str, int, str]] = []
+
+    def thema_von(stapel: list[dict]) -> str | None:
+        """Das nächste umgebende Themenwörterbuch, HighContrast eingeschlossen."""
+        return next((e["key"] for e in reversed(stapel[:-1])
+                     if lokal(e["tag"]) == "ResourceDictionary" and e["key"] in THEMEN | {"HighContrast"}), None)
+
+    def start(stapel, eintrag, attribute):
+        tag = lokal(eintrag["tag"])
+        if tag == "ResourceDictionary" and eintrag["key"] in THEMEN:
+            zeile_von.setdefault(eintrag["key"], eintrag["zeile"])
+            schluessel.setdefault(eintrag["key"], {})
+            return
+        thema = thema_von(stapel)
+        if thema not in THEMEN:
+            return
+        eltern = stapel[-2]
+        if lokal(eltern["tag"]) == "ResourceDictionary" and eltern["key"] == thema and eintrag["key"]:
+            schluessel[thema].setdefault(eintrag["key"], eintrag["zeile"])
+        ziele = [t.group(2) for wert in attribute.values() if (t := VERWEIS.fullmatch(wert.strip()))]
+        if tag in {"StaticResource", "ThemeResource"} and attribute.get("ResourceKey", "").strip():
+            ziele.append(attribute["ResourceKey"].strip())
+        element = f"{tag} {eintrag['key']}" if eintrag["key"] else tag
+        verweise.extend((thema, ziel, eintrag["zeile"], element) for ziel in ziele if ziel.startswith("Fs"))
+
+    lesen(pfad, start, lambda *_: None)
+    name = APP
+    funde = [f"{name}: Wörterbuch {thema} fehlt, das Design hätte keine eigenen Farben"
+             for thema in sorted(THEMEN - schluessel.keys())]
+    akzent = sorted(k for k in erlaubt if k.startswith("SystemAccentColor"))
+    if THEMEN <= schluessel.keys():
+        hell, dunkel = schluessel["Light"], schluessel["Dark"]
+        for k in sorted((hell.keys() ^ dunkel.keys()) - set(akzent)):
+            mit, ohne = ("Light", "Dark") if k in hell else ("Dark", "Light")
+            funde.append(f"{name}:{zeile_von[ohne]}: Schlüssel {k} fehlt im Wörterbuch {ohne} "
+                         f"(in {mit} Zeile {schluessel[mit][k]})")
+    for thema in sorted(THEMEN & schluessel.keys()):
+        fehlt = [k for k in akzent if k not in schluessel[thema]]
+        if fehlt:
+            funde.append(f"{name}:{zeile_von[thema]}: Akzentreihe im Wörterbuch {thema} unvollständig, "
+                         f"fehlt: {', '.join(fehlt)}")
+    for thema, rolle, zeile, element in verweise:
+        if rolle not in schluessel[thema]:
+            funde.append(f"{name}:{zeile}: {element} im Wörterbuch {thema} verweist auf {rolle}, die Rolle fehlt dort")
+    return funde, len(schluessel.get("Light", {}).keys() & schluessel.get("Dark", {}).keys())
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="farben-pruefen.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("--export", type=Path, required=True, help="exporte/winui/Firestrike.xaml von firestrike-branding")
@@ -293,6 +353,8 @@ def main(argv: list[str]) -> int:
             rollen += r
         f, kontrast_rollen, kontrast_pinsel = kontrast_pruefen(wurzel / APP, erlaubt)
         funde += f
+        f, beide = themen_pruefen(wurzel / APP, erlaubt)
+        funde += f
     except Unbrauchbar as fehler:
         print(fehler, file=sys.stderr)
         return 2
@@ -306,7 +368,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(f"Keine festen Farbwerte: {len(namen)} XAML-Dateien, {rollen} Werte der Rollen und der Akzentreihe "
           f"({len(erlaubt)} Schlüssel im Export). Kontrastdesign: {kontrast_rollen} Rollen und {kontrast_pinsel} "
-          f"Pinsel auf Systemfarben.")
+          f"Pinsel auf Systemfarben. Light und Dark: je {beide} Schlüssel, Akzentreihe vollständig.")
     return 0
 
 
