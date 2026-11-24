@@ -276,24 +276,37 @@ public sealed class CacheManager(AbsApiClient api, string root)
     }
 
     /// <summary>
-    /// Entfernt ein Buch samt Ordner. Erst die Audiodaten, dann die Anheftung, die Daten zuletzt (#85): Lässt sich
-    /// eine Datei nicht löschen, bleibt das Buch ein Download mit seinen Daten. Ein angehefteter Rest ohne Daten
-    /// tauchte nirgends mehr auf, und die Bereinigung ließe ihn liegen.
+    /// Entfernt ein Buch oder einen ganzen Podcast samt Ordner. Erst die Audiodaten, dann die Anheftung, die Daten
+    /// zuletzt (#85): Lässt sich eine Datei nicht löschen, bleibt der Download mit seinen Daten bestehen. Ein
+    /// angehefteter Rest ohne Daten tauchte nirgends mehr auf, und die Bereinigung ließe ihn liegen. Die Folgen eines
+    /// Podcasts gehen deshalb zuerst einzeln wie bei <see cref="DeleteEpisode"/>, danach der Rest in derselben
+    /// Reihenfolge: andere Dateien, Anheftungen, Daten (#105).
     /// </summary>
     public void DeleteItem(string itemId)
     {
         var dir = GetItemDirectory(itemId);
         if (!Directory.Exists(dir)) return;
-        var marker = Path.Combine(dir, PinnedFileName);
-        var data = Path.Combine(dir, ItemFileName);
-        foreach (var file in Directory.EnumerateFiles(dir).ToList())
-        {
-            if (!string.Equals(file, marker, StringComparison.OrdinalIgnoreCase) && !string.Equals(file, data, StringComparison.OrdinalIgnoreCase))
-                File.Delete(file);
-        }
-        File.Delete(marker);
-        File.Delete(data);
+        foreach (var episode in Directory.EnumerateFiles(dir, EpisodeFilePrefix + "*.json").ToList())
+            DeleteEpisode(itemId, Path.GetFileNameWithoutExtension(episode)[EpisodeFilePrefix.Length..]);
+        if (!Directory.Exists(dir)) return; // Mit der letzten Folge ist der leere Ordner schon gegangen.
+        var files = Directory.EnumerateFiles(dir).ToList();
+        foreach (var file in files.Where(f => !IsPinMarker(f) && !IsDataFile(f))) File.Delete(file);
+        foreach (var file in files.Where(IsPinMarker)) File.Delete(file);
+        foreach (var file in files.Where(IsDataFile)) File.Delete(file);
         Directory.Delete(dir, recursive: true);
+    }
+
+    /// <summary>Anheftung eines Buchs (.pinned) oder einer Folge (.pinned_…).</summary>
+    private static bool IsPinMarker(string file)
+        => Path.GetFileName(file).StartsWith(PinnedFileName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Daten eines Buchs (item.json) oder einer Folge (episode_….json).</summary>
+    private static bool IsDataFile(string file)
+    {
+        var name = Path.GetFileName(file);
+        return name.Equals(ItemFileName, StringComparison.OrdinalIgnoreCase) ||
+               (name.StartsWith(EpisodeFilePrefix, StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
     }
 
     // ---------- Größe & Bereinigung ----------

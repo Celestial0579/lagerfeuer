@@ -196,6 +196,93 @@ public class EpisodeDownloadTests : IDisposable
         Assert.False(Directory.Exists(cache.GetItemDirectory("pod")));
     }
 
+    /// <summary>Lädt beide Folgen herunter; beide sind danach angeheftet.</summary>
+    private async Task<CacheManager> PodcastMitZweiFolgenAsync(AbsApiClient api)
+    {
+        var cache = new CacheManager(api, _dir.Path);
+        var downloads = new DownloadManager(api, cache, covers: null, pollInterval: TimeSpan.FromMilliseconds(20));
+        downloads.Enqueue("pod", null, "ep1");
+        await WaitForEndAsync(downloads, "pod", "ep1");
+        downloads.Enqueue("pod", null, "ep2");
+        await WaitForEndAsync(downloads, "pod", "ep2");
+        await Task.Delay(200, Ct);
+        Assert.True(cache.IsEpisodePinned("pod", "ep1") && cache.IsEpisodePinned("pod", "ep2"));
+        return cache;
+    }
+
+    /// <summary>
+    /// Nach einem gescheiterten Entfernen des ganzen Podcasts (#105): Folge 2, deren Track sich nicht löschen ließ,
+    /// bleibt ein Download, angeheftet und mit ihren Daten. Folge 1 ist ganz weg oder ganz da, je nachdem, in welcher
+    /// Reihenfolge der Ordner die Folgen liefert. Und keine Anheftung bleibt ohne Daten.
+    /// </summary>
+    private static void AssertFolgenGanzOderWeg(CacheManager cache, string ep1Track)
+    {
+        Assert.True(cache.IsEpisodePinned("pod", "ep2"));
+        Assert.NotNull(cache.GetLocalEpisode("pod", "ep2"));
+        var ep1Da = cache.GetLocalEpisode("pod", "ep1") is not null;
+        Assert.Equal(ep1Da, cache.IsEpisodePinned("pod", "ep1"));
+        Assert.Equal(ep1Da, File.Exists(ep1Track));
+        var dir = cache.GetItemDirectory("pod");
+        foreach (var marker in Directory.EnumerateFiles(dir, ".pinned_*"))
+            Assert.True(File.Exists(Path.Combine(dir, "episode_" + Path.GetFileName(marker)[".pinned_".Length..] + ".json")),
+                $"{Path.GetFileName(marker)} ohne Daten");
+    }
+
+    [Fact]
+    public async Task Entfernen_GanzerPodcast_TrackNichtLoeschbar_FolgenGanzOderWeg()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = await PodcastMitZweiFolgenAsync(api);
+        var ep1Track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep1")!.Tracks[0]);
+        var ep2Track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep2")!.Tracks[0]);
+        // Ein Ordner unter dem Namen des Tracks: Daran scheitert File.Delete unter Windows wie unter Linux, und nur an
+        // dieser einen Stelle. DeleteDenied sperrt unter Linux den ganzen Ordner.
+        File.Delete(ep2Track);
+        Directory.CreateDirectory(ep2Track);
+
+        Assert.Throws<UnauthorizedAccessException>(() => cache.DeleteItem("pod"));
+
+        AssertFolgenGanzOderWeg(cache, ep1Track);
+        Directory.Delete(ep2Track);
+        cache.DeleteItem("pod");
+        Assert.False(Directory.Exists(cache.GetItemDirectory("pod")));
+    }
+
+    [Fact]
+    public async Task Entfernen_GanzerPodcast_GesperrterTrack_FolgeBleibtAngeheftetMitDaten()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = await PodcastMitZweiFolgenAsync(api);
+        var ep1Track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep1")!.Tracks[0]);
+        var ep2Track = cache.GetTrackPath("pod", cache.GetLocalEpisode("pod", "ep2")!.Tracks[0]);
+
+        using (DeleteDenied.For(ep2Track))
+            Assert.Throws<UnauthorizedAccessException>(() => cache.DeleteItem("pod"));
+
+        AssertFolgenGanzOderWeg(cache, ep1Track);
+        cache.DeleteItem("pod");
+        Assert.False(Directory.Exists(cache.GetItemDirectory("pod")));
+    }
+
+    [Fact]
+    public async Task Entfernen_GanzerPodcast_EntferntFolgenUndRest()
+    {
+        var (api, _) = CreateServer();
+        using var _api = api;
+        var cache = await PodcastMitZweiFolgenAsync(api);
+        var dir = cache.GetItemDirectory("pod");
+        File.WriteAllBytes(Path.Combine(dir, "002_gestreamt.mp3"), [1, 2, 3]); // ohne Folgendaten
+        File.WriteAllText(Path.Combine(dir, ".pinned_ep9"), "");               // Anheftung ohne Daten
+        File.WriteAllText(Path.Combine(dir, "episode_ep8.json"), "{kaputt");    // unlesbare Daten
+
+        cache.DeleteItem("pod");
+
+        Assert.False(Directory.Exists(dir));
+        Assert.Empty(cache.ListLocalEpisodes());
+    }
+
     [Fact]
     public async Task Bereinigung_SchontAngehefteteFolgen_UndLoeschtDenRestDesPodcasts()
     {
