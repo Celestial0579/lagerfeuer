@@ -56,6 +56,16 @@ jobs:
       - name: App.xaml abgleichen
         run: python3 "$RUNNER_TEMP/marke/werkzeuge/marke.py" abgleichen src/Lagerfeuer/App.xaml
 
+      # Der Abgleich sieht nur die Rollen (Fs…Color) und die Akzentreihe. Ein Pinsel oder Stil mit festem Farbwert
+      # fiele ihm nicht auf (#94): Jeder Farbwert gehört in eine Rolle, die Pinsel zeigen darauf.
+      - name: Keine festen Farbwerte neben den Rollen
+        run: |
+          if grep -nE '(="|>)[[:space:]]*#[0-9A-Fa-f]{3,8}[[:space:]]*("|<)' src/Lagerfeuer/App.xaml \
+            | grep -vE '<Color x:Key="(Fs[A-Za-z]+Color|SystemAccentColor[A-Za-z0-9]*)">#[0-9A-Fa-f]{6}</Color>'; then
+            echo "::error file=src/Lagerfeuer/App.xaml::Fester Farbwert außerhalb der Rollen und der Akzentreihe (#94)"
+            exit 1
+          fi
+
   # Baut aus installer/Lagerfeuer.nsi ein Probe-Setup mit winziger Nutzlast und prüft, dass es keine fremden
   # Programme startet, die neben ihm liegen (tests/installer/Test-Installer.ps1).
   installer:
