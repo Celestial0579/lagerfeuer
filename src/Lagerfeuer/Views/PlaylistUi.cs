@@ -212,8 +212,10 @@ public static class PlaylistUi
                 {
                     try
                     {
+                        // Der Stand unmittelbar davor, nicht der beim Öffnen des Menüs (#82).
+                        var before = await App.Api.GetCollectionAsync(c.Id);
                         var after = await App.Api.AddBooksToCollectionAsync(c.Id, t.BookIds);
-                        var result = BatchRules.Summarize(t.BookIds, c.Books.Select(b => b.Id), after.Books.Select(b => b.Id));
+                        var result = BatchRules.Summarize(t.BookIds, before.Books.Select(b => b.Id), after.Books.Select(b => b.Id));
                         App.MainWindow.ShowInfo(BatchRules.Message(result, CollectionRules.DisplayName(c)));
                         done?.Invoke();
                     }
@@ -277,8 +279,9 @@ public static class PlaylistUi
                 {
                     try
                     {
+                        var before = await App.Api.GetPlaylistAsync(list.Id); // Stand unmittelbar davor (#82)
                         var after = await App.Api.AddBooksToPlaylistAsync(list.Id, t.BookIds);
-                        var result = BatchRules.Summarize(t.BookIds, BookIds(list), BookIds(after));
+                        var result = BatchRules.Summarize(t.BookIds, BookIds(before), BookIds(after));
                         App.MainWindow.ShowInfo(BatchRules.Message(result, PlaylistRules.DisplayName(list)));
                         done?.Invoke();
                     }
@@ -318,7 +321,7 @@ public static class PlaylistUi
         {
             await App.RefreshRightsAsync();
             App.MainWindow.ShowError($"{what}: Dafür fehlt dir am Server inzwischen das Recht.");
-            CollectionRightsChanged?.Invoke(null, EventArgs.Empty);
+            NotifyCollectionRightsChanged();
         }
         else
         {
@@ -328,4 +331,7 @@ public static class PlaylistUi
 
     /// <summary>Nach einem 403 neu geholte Rechte – offene Seiten passen ihre Knöpfe an.</summary>
     public static event EventHandler? CollectionRightsChanged;
+
+    /// <summary>Rechte haben sich geändert (403 oder Live-Meldung, #81): offene Seiten passen ihre Knöpfe an.</summary>
+    public static void NotifyCollectionRightsChanged() => CollectionRightsChanged?.Invoke(null, EventArgs.Empty);
 }

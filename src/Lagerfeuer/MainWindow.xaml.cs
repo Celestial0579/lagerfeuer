@@ -37,11 +37,21 @@ public sealed partial class MainWindow : Window
         App.Api.SessionExpired += (_, _) => DispatcherQueue.TryEnqueue(() =>
             ShowLogin("Die Anmeldung ist abgelaufen. Bitte erneut anmelden."));
         Player.PropertyChanged += OnPlayerPropertyChanged;
+        Activated += OnWindowActivated;
 
         _ = StartAsync();
         StartUpdateChecks();
         _taskbar = new TaskbarIntegration(WinRT.Interop.WindowNative.GetWindowHandle(this), Player, DispatcherQueue);
         Closed += (_, _) => { _taskbar.Dispose(); _miniPlayer?.Close(); };
+    }
+
+    /// <summary>
+    /// Fenster wieder aktiv: Rechte nachfragen (#81). Hat ein Verwalter sie inzwischen geändert, meldet Audiobookshelf
+    /// das nicht dem betroffenen Nutzer.
+    /// </summary>
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated) _ = App.RefreshRightsIfDueAsync();
     }
 
     private readonly TaskbarIntegration _taskbar;
@@ -450,6 +460,13 @@ public sealed partial class MainWindow : Window
     public void OpenDownloads() => ContentFrame.Navigate(typeof(DownloadsPage));
 
     public void OpenCollection(string collectionId) => ContentFrame.Navigate(typeof(CollectionPage), collectionId);
+
+    /// <summary>Zur Bibliothek wechseln (etwa nachdem eine Sammlung gelöscht wurde, #82); unbekannt: zur Startseite.</summary>
+    public void OpenLibrary(string? libraryId)
+    {
+        if (App.Libraries.FirstOrDefault(l => l.Id == libraryId) is { } lib) ContentFrame.Navigate(typeof(LibraryPage), lib);
+        else ContentFrame.Navigate(typeof(HomePage));
+    }
 
     public void OpenAuthor(string authorId) => ContentFrame.Navigate(typeof(AuthorPage), authorId);
 

@@ -20,6 +20,20 @@ public static class CollectionRules
         return new(user.Permissions?.Update == true, user.Permissions?.Delete == true);
     }
 
+    /// <summary>
+    /// Übernimmt Typ und Rechte aus einer Live-Meldung <c>user_updated</c> (#81), aber nur aus einem vollständigen
+    /// Nutzerobjekt (Typ und Rechte gesetzt); eine Meldung ohne diese Angaben ändert nichts. Liefert, ob sich an
+    /// den Rechten für Sammlungen etwas geändert hat.
+    /// </summary>
+    public static bool TakeRights(AbsUser target, AbsUser update)
+    {
+        if (update.Type is null || update.Permissions is null) return false;
+        var before = For(target);
+        target.Type = update.Type;
+        target.Permissions = update.Permissions;
+        return For(target) != before;
+    }
+
     public static string DisplayName(Collection c)
     {
         var name = PlaylistRules.Clean(c.Name, PlaylistRules.MaxNameLength);

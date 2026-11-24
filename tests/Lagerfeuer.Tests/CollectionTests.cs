@@ -160,6 +160,39 @@ public class CollectionTests
     }
 
     [Fact]
+    public void LiveMeldung_UebernimmtRechte_NurAusVollstaendigemNutzer()
+    {
+        var user = new AbsUser { Type = "user", Permissions = new UserPermissions { Update = false, Delete = false } };
+
+        // Meldung ohne Typ und Rechte (etwa nur Lesezeichen): nichts ändern.
+        Assert.False(CollectionRules.TakeRights(user, new AbsUser { Permissions = new UserPermissions { Update = true } }));
+        Assert.False(CollectionRules.For(user).CanEdit);
+
+        // Vollständiger Nutzer mit neuen Rechten: übernehmen und Änderung melden.
+        Assert.True(CollectionRules.TakeRights(user, new AbsUser { Type = "user", Permissions = new UserPermissions { Update = true, Delete = false } }));
+        Assert.Equal(new CollectionRules.Rights(true, false), CollectionRules.For(user));
+
+        // Dieselben Rechte noch einmal: übernommen, aber keine Änderung.
+        Assert.False(CollectionRules.TakeRights(user, new AbsUser { Type = "user", Permissions = new UserPermissions { Update = true } }));
+
+        // Zum Verwalter gemacht: alles.
+        Assert.True(CollectionRules.TakeRights(user, new AbsUser { Type = "admin", Permissions = new UserPermissions() }));
+        Assert.Equal(new CollectionRules.Rights(true, true), CollectionRules.For(user));
+    }
+
+    [Fact]
+    public void LiveMeldung_AusDemJsonDesServers()
+    {
+        // So meldet Audiobookshelf user_updated (toJSONForBrowser), hier gekürzt.
+        var json = "{\"id\":\"u1\",\"username\":\"hoerer\",\"type\":\"user\",\"permissions\":{\"download\":true,\"update\":true,\"delete\":true},\"bookmarks\":[]}";
+        var update = System.Text.Json.JsonSerializer.Deserialize<AbsUser>(json, AbsApiClient.Json)!;
+        var user = new AbsUser { Type = "user", Permissions = new UserPermissions() };
+
+        Assert.True(CollectionRules.TakeRights(user, update));
+        Assert.Equal(new CollectionRules.Rights(true, true), CollectionRules.For(user));
+    }
+
+    [Fact]
     public void Rechte_OhneNutzerOderAngaben_Nichts()
     {
         Assert.Equal(new CollectionRules.Rights(false, false), CollectionRules.For(null));

@@ -52,8 +52,16 @@ public sealed partial class LibraryPage : Page
     {
         InitializeComponent();
         // Die Seite bleibt im Speicher (NavigationCacheMode): bei jedem Zeigen an- und beim Verlassen abmelden.
-        Loaded += (_, _) => App.CollectionChanged += OnCollectionChanged;
-        Unloaded += (_, _) => App.CollectionChanged -= OnCollectionChanged;
+        Loaded += (_, _) =>
+        {
+            App.CollectionChanged += OnCollectionChanged;
+            PlaylistUi.CollectionRightsChanged += OnRightsChanged;
+        };
+        Unloaded += (_, _) =>
+        {
+            App.CollectionChanged -= OnCollectionChanged;
+            PlaylistUi.CollectionRightsChanged -= OnRightsChanged;
+        };
     }
 
     private bool IsPodcastLibrary => _library?.MediaType == "podcast";
@@ -142,7 +150,11 @@ public sealed partial class LibraryPage : Page
         ShowView(view);
         if (view == "series" && !_seriesLoaded) _ = LoadSeriesAsync();
         if (view == "authors" && !_authorsLoaded) _ = LoadAuthorsAsync();
-        if (view == LibraryViews.Collections) _ = LoadCollectionsAsync(); // immer frisch: andere Nutzer ändern sie mit
+        if (view == LibraryViews.Collections)
+        {
+            _ = LoadCollectionsAsync(); // immer frisch: andere Nutzer ändern sie mit
+            _ = App.RefreshRightsIfDueAsync(); // der Hinweis ohne Sammlungen hängt am Recht (#81)
+        }
     }
 
     private void ShowView(string view)
@@ -256,6 +268,7 @@ public sealed partial class LibraryPage : Page
         FilterBox.Visibility = !on && !IsPodcastLibrary ? Visibility.Visible : Visibility.Collapsed;
         SortBox.Visibility = DescToggle.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        if (on) _ = App.RefreshRightsIfDueAsync(); // „Zur Sammlung …“ folgt den aktuellen Rechten (#81)
         UpdateSelection();
     }
 
@@ -291,6 +304,13 @@ public sealed partial class LibraryPage : Page
     private static string NoCollectionsText() => App.CollectionRights.CanEdit
         ? "Noch keine Sammlungen. Eine neue legst du auf der Seite eines Buchs an: „Zur Sammlung“, dann „Neue Sammlung …“."
         : "Noch keine Sammlungen.";
+
+    /// <summary>Rechte geändert (#81): „Zur Sammlung …“ und der Hinweis ohne Sammlungen folgen ihnen.</summary>
+    private void OnRightsChanged(object? sender, EventArgs e)
+    {
+        SelectionCollectionButton.Visibility = App.CollectionRights.CanEdit ? Visibility.Visible : Visibility.Collapsed;
+        if (CollectionsGrid.Visibility == Visibility.Visible) NoResults.Text = NoCollectionsText();
+    }
 
     private void OnCollectionChanged(object? sender, CollectionChange change)
     {
