@@ -9,6 +9,10 @@ und die Stufen der Akzentreihe. Überall sonst ist ein Hex-Wert ein Fehler, eben
 Die Dateien werden als XML gelesen. Anführungszeichen, Leerzeichen, Zeilenumbrüche und Kommentare spielen also keine
 Rolle.
 
+Dazu das Kontrastdesign von App.xaml: Das Wörterbuch HighContrast muss es geben, jede Rolle aus Light und Dark zeigt
+dort auf eine Systemfarbe, und jeder eigene Pinsel (Lf…Brush) per ThemeResource auf dieselbe Systemfarbe wie seine
+Rolle. Ob die Systemfarbe je Rolle die des Exports ist, prüft `marke.py abgleichen`.
+
     python3 build/farben-pruefen.py --export PFAD/exporte/winui/Firestrike.xaml
 
 Exit-Code 0: keine festen Farbwerte, 1: Funde (je Fund Datei, Zeile und Wert), 2: Aufruf, Export oder eine Datei
@@ -143,6 +147,75 @@ def pruefen(pfad: Path, name: str, erlaubt: set[str]) -> tuple[list[str], int]:
     return funde, rollen
 
 
+VERWEIS = re.compile(r"\{\s*(StaticResource|ThemeResource)\s+(?:ResourceKey\s*=\s*)?([A-Za-z0-9_.]+)\s*\}")
+
+
+def kontrast_pruefen(pfad: Path, erlaubt: set[str]) -> tuple[list[str], int, int]:
+    """
+    Das Kontrastdesign von App.xaml (#93, #96): Jede Rolle, die Light oder Dark mit einem Wert führen, braucht im
+    Wörterbuch HighContrast einen Verweis auf eine Systemfarbe. Jeder eigene Pinsel (Lf…Brush), der in Light oder Dark
+    auf eine Rolle zeigt, muss dort per ThemeResource auf dieselbe Systemfarbe zeigen wie diese Rolle; sonst folgte er
+    einem Wechsel des Kontrastdesigns nicht, oder ein Nachschlagen schlüge im Kontrastdesign fehl.
+    """
+    woerter: dict[str, dict[str, dict[str, tuple[str, int]]]] = {}
+
+    def start(stapel, eintrag, attribute):
+        if len(stapel) < 2:
+            return
+        eltern = stapel[-2]
+        if lokal(eltern["tag"]) != "ResourceDictionary" or eltern["key"] not in THEMEN | {"HighContrast"}:
+            return
+        wort = woerter.setdefault(eltern["key"], {"Color": {}, "SolidColorBrush": {}, "StaticResource": {}})
+        tag = lokal(eintrag["tag"])
+        if tag == "SolidColorBrush" and eintrag["key"]:
+            wort["SolidColorBrush"][eintrag["key"]] = (attribute.get("Color", "").strip(), eintrag["zeile"])
+        elif tag == "StaticResource" and eintrag["key"]:
+            wort["StaticResource"][eintrag["key"]] = (attribute.get("ResourceKey", "").strip(), eintrag["zeile"])
+
+    def ende(stapel, eintrag, text):
+        if len(stapel) >= 2 and lokal(eintrag["tag"]) == "Color" and eintrag["key"]:
+            eltern = stapel[-2]
+            if lokal(eltern["tag"]) == "ResourceDictionary" and eltern["key"] in THEMEN | {"HighContrast"}:
+                woerter.setdefault(eltern["key"], {"Color": {}, "SolidColorBrush": {}, "StaticResource": {}})[
+                    "Color"][eintrag["key"]] = (text, eintrag["zeile"])
+
+    lesen(pfad, start, ende)
+    name = APP
+    if not THEMEN & woerter.keys():
+        return [], 0, 0
+    if "HighContrast" not in woerter:
+        return [f"{name}: Wörterbuch HighContrast fehlt; im Kontrastdesign blieben die eigenen Farben stehen (#93)"], 0, 0
+    kontrast = woerter["HighContrast"]
+    funde: list[str] = []
+    rollen = sorted({k for t in THEMEN & woerter.keys() for k in woerter[t]["Color"] if k in erlaubt and k.startswith("Fs")})
+    systemfarbe: dict[str, str] = {}
+    for rolle in rollen:
+        ziel = kontrast["StaticResource"].get(rolle)
+        if ziel and ziel[0].startswith("SystemColor"):
+            systemfarbe[rolle] = ziel[0]
+        else:
+            funde.append(f"{name}: Rolle {rolle} hat im Wörterbuch HighContrast keinen Verweis auf eine Systemfarbe")
+    pinsel = 0
+    for thema in sorted(THEMEN & woerter.keys()):
+        for schluessel, (wert, zeile) in sorted(woerter[thema]["SolidColorBrush"].items()):
+            treffer = VERWEIS.fullmatch(wert)
+            if not schluessel.startswith("Lf") or not treffer or treffer.group(2) not in systemfarbe:
+                continue
+            if thema != "Light" and schluessel in woerter.get("Light", {}).get("SolidColorBrush", {}):
+                continue  # schon über Light geprüft
+            pinsel += 1
+            soll = f"{{ThemeResource {systemfarbe[treffer.group(2)]}}}"
+            im_kontrast = kontrast["SolidColorBrush"].get(schluessel)
+            if im_kontrast is None:
+                funde.append(f"{name}:{zeile}: Pinsel {schluessel} fehlt im Wörterbuch HighContrast (soll Color=\"{soll}\")")
+                continue
+            ist = VERWEIS.fullmatch(im_kontrast[0])
+            if not ist or ist.group(1) != "ThemeResource" or ist.group(2) != systemfarbe[treffer.group(2)]:
+                funde.append(f"{name}:{im_kontrast[1]}: Pinsel {schluessel} im Wörterbuch HighContrast: "
+                             f"Color=\"{im_kontrast[0]}\", soll \"{soll}\" wie die Rolle {treffer.group(2)}")
+    return funde, len(rollen), pinsel
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="farben-pruefen.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("--export", type=Path, required=True, help="exporte/winui/Firestrike.xaml von firestrike-branding")
@@ -159,6 +232,8 @@ def main(argv: list[str]) -> int:
             f, r = pruefen(Path(name), name, erlaubt)
             funde += f
             rollen += r
+        f, kontrast_rollen, kontrast_pinsel = kontrast_pruefen(Path(APP), erlaubt)
+        funde += f
     except Unbrauchbar as fehler:
         print(fehler, file=sys.stderr)
         return 2
@@ -171,7 +246,8 @@ def main(argv: list[str]) -> int:
         print(f"Feste Farbwerte: {len(funde)}. Jeder Farbwert gehört in eine Rolle, die Pinsel zeigen darauf (#94, #96).")
         return 1
     print(f"Keine festen Farbwerte: {len(namen)} XAML-Dateien, {rollen} Werte der Rollen und der Akzentreihe "
-          f"({len(erlaubt)} Schlüssel im Export).")
+          f"({len(erlaubt)} Schlüssel im Export). Kontrastdesign: {kontrast_rollen} Rollen und {kontrast_pinsel} "
+          f"Pinsel auf Systemfarben.")
     return 0
 
 
