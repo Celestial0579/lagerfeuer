@@ -23,6 +23,7 @@ APP = "src/Lagerfeuer/App.xaml"
 BUCH = "src/Lagerfeuer/Views/BookPage.xaml"
 PRUEFUNG = Path("build/farben-pruefen.py")
 LIGHT = '<ResourceDictionary x:Key="Light">'
+DARK = '<ResourceDictionary x:Key="Dark">'
 HC = '<ResourceDictionary x:Key="HighContrast">'
 STIL = '<Style x:Key="LfTitleStyle"'
 GRUND = '<Color x:Key="FsGrundColor">#EFF0ED</Color>'
@@ -79,6 +80,8 @@ FAELLE: list[tuple[str, int, dict]] = [
                                                        'Color="{ThemeResource SystemAccentColor}" />')]}),
     ("Kontrast: Lf-Pinsel ohne Rolle vorhanden", 0, None, {APP: [(LIGHT, LIGHT + '<SolidColorBrush x:Key="LfAkzentBrush" '
                                                           'Color="{ThemeResource SystemAccentColor}" />'),
+                                                         (DARK, DARK + '<SolidColorBrush x:Key="LfAkzentBrush" '
+                                                          'Color="{ThemeResource SystemAccentColor}" />'),
                                                          (HC, HC + '<SolidColorBrush x:Key="LfAkzentBrush" '
                                                           'Color="{ThemeResource SystemColorHighlightColor}" />')]}),
     ("VisualState-Setter mit Target", 1, 'Setter Value="Red": Farbname',
@@ -123,6 +126,27 @@ FAELLE: list[tuple[str, int, dict]] = [
               'Storyboard.TargetProperty="Foreground"><ObjectAnimationUsingKeyFrames.KeyFrames><DiscreteObjectKeyFrame '
               'KeyTime="0" Value="Red" /></ObjectAnimationUsingKeyFrames.KeyFrames></ObjectAnimationUsingKeyFrames>'
               '</Storyboard></Page.Resources>')]}),
+    # Hell und Dunkel vollständig (#104).
+    ("Rolle nur in Light", 1, 'Schlüssel FsGlutColor fehlt im Wörterbuch Dark',
+     {APP: [('<Color x:Key="FsGlutColor">#DB7745</Color>', "")]}),
+    ("Rolle nur in Dark", 1, 'Schlüssel FsTextColor fehlt im Wörterbuch Light',
+     {APP: [('<Color x:Key="FsTextColor">#1B1E1C</Color>', "")]}),
+    ("Pinsel nur in Dark", 1, 'Schlüssel LfSparkBrush fehlt im Wörterbuch Light',
+     {APP: [('<SolidColorBrush x:Key="LfSparkBrush" Color="{StaticResource FsFunkeColor}" />', "")]}),
+    ("Akzentreihe nur in Light", 1, 'Akzentreihe im Wörterbuch Dark unvollständig, fehlt: SystemAccentColor, ',
+     {APP: [(r're:(<ResourceDictionary x:Key="Dark">)(?:\s*<Color x:Key="SystemAccentColor\w*">#\w+</Color>)+',
+             '\\1')]}),
+    ("Akzentstufe in beiden entfernt", 1,
+     'Akzentreihe im Wörterbuch Light unvollständig, fehlt: SystemAccentColorDark2',
+     {APP: [('re:<Color x:Key="SystemAccentColorDark2">[^<]*</Color>', "")]}),
+    ("Rolle in beiden entfernt", 1, 'SolidColorBrush LfEmberBrush im Wörterbuch Light verweist auf FsGlutColor',
+     {APP: [('re:<Color x:Key="FsGlutColor">[^<]*</Color>', "")]}),
+    ("Wörterbuch Dark entfernt", 1, 'Wörterbuch Dark fehlt',
+     {APP: [(r're:\s*<ResourceDictionary x:Key="Dark">.*?</ResourceDictionary>', "")]}),
+    ("Andere Reihenfolge in Dark", 0, None,
+     {APP: [('<Color x:Key="FsGrundColor">#141715</Color>', ""),
+            ('<Color x:Key="FsFunkeColor">#F2B558</Color>',
+             '<Color x:Key="FsFunkeColor">#F2B558</Color><Color x:Key="FsGrundColor">#141715</Color>')]}),
 ]
 
 
