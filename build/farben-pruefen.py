@@ -49,8 +49,10 @@ def lokal(name: str) -> str:
 
 
 def ist_farb_eigenschaft(name: str) -> bool:
-    name = lokal(name).rsplit(".", 1)[-1]
-    return name in FARB_EIGENSCHAFTEN or name.endswith("Color") or name.endswith("Brush")
+    """Color, Background … oder ein Name, der so endet, etwa PlaceholderForeground (#99). Klammern um angehängte
+    Eigenschaften wie „(TextBlock.Foreground)“ zählen nicht."""
+    name = lokal(name.strip().strip("()")).rsplit(".", 1)[-1]
+    return any(name.endswith(e) for e in FARB_EIGENSCHAFTEN | {"Brush"})
 
 
 def ist_farb_element(tag: str) -> bool:
@@ -69,7 +71,7 @@ def lesen(pfad: Path, beim_start, beim_ende) -> None:
     stapel: list[dict] = []
 
     def start(tag, attribute):
-        eintrag = {"tag": tag, "zeile": leser.CurrentLineNumber, "text": [],
+        eintrag = {"tag": tag, "zeile": leser.CurrentLineNumber, "text": [], "attribute": attribute,
                    "key": next((v for k, v in attribute.items() if lokal(k) == "Key"), None)}
         stapel.append(eintrag)
         beim_start(stapel, eintrag, attribute)
@@ -90,6 +92,11 @@ def lesen(pfad: Path, beim_start, beim_ende) -> None:
         leser.Parse(daten, True)
     except expat.ExpatError as fehler:
         raise Unbrauchbar(f"{pfad}: kein gültiges XML ({fehler})") from fehler
+
+
+def setter_farbe(eintrag: dict) -> bool:
+    """Ist das Element ein Setter für eine Farb-Eigenschaft (Property="Foreground" …)?"""
+    return lokal(eintrag["tag"]) == "Setter" and ist_farb_eigenschaft(eintrag["attribute"].get("Property", ""))
 
 
 def in_themenwoerterbuch(stapel: list[dict]) -> bool:
@@ -122,7 +129,8 @@ def pruefen(pfad: Path, name: str, erlaubt: set[str]) -> tuple[list[str], int]:
             w = wert.strip()
             if HEX.fullmatch(w):
                 funde.append(f"{name}:{eintrag['zeile']}: {lokal(eintrag['tag'])} {k}=\"{w}\": fester Farbwert")
-            elif NAME.fullmatch(w) and ist_farb_eigenschaft(k) and w not in ERLAUBTE_NAMEN:
+            elif NAME.fullmatch(w) and w not in ERLAUBTE_NAMEN and (
+                    ist_farb_eigenschaft(k) or (setter_farbe(eintrag) and lokal(k) == "Value")):
                 funde.append(f"{name}:{eintrag['zeile']}: {lokal(eintrag['tag'])} {k}=\"{w}\": Farbname")
 
     def ende(stapel, eintrag, text):
@@ -138,9 +146,9 @@ def pruefen(pfad: Path, name: str, erlaubt: set[str]) -> tuple[list[str], int]:
                     grund = (" (nur in den Wörterbüchern Light und Dark)" if eintrag["key"] in erlaubt
                              else " (kein Schlüssel des Exports)")
                 funde.append(f"{name}:{eintrag['zeile']}: <{tag}{schluessel}>{text}: fester Farbwert{grund}")
-        elif (NAME.fullmatch(text) and ist_farb_element(eintrag["tag"]) and not tag.endswith(".Value")
-              and text not in ERLAUBTE_NAMEN):
-            # Ein Setter kann auch „Collapsed“ oder „Bold“ tragen; dort zählt nur ein Hex-Wert.
+        elif NAME.fullmatch(text) and text not in ERLAUBTE_NAMEN and ist_farb_element(eintrag["tag"]) and (
+                not tag.endswith(".Value") or (len(stapel) >= 2 and setter_farbe(stapel[-2]))):
+            # Ein Setter kann auch „Collapsed“ oder „Bold“ tragen; ein Name zählt nur bei einer Farb-Eigenschaft (#99).
             funde.append(f"{name}:{eintrag['zeile']}: <{tag}>{text}: Farbname")
 
     lesen(pfad, start, ende)
@@ -198,14 +206,21 @@ def kontrast_pruefen(pfad: Path, erlaubt: set[str]) -> tuple[list[str], int, int
     pinsel = 0
     for thema in sorted(THEMEN & woerter.keys()):
         for schluessel, (wert, zeile) in sorted(woerter[thema]["SolidColorBrush"].items()):
-            treffer = VERWEIS.fullmatch(wert)
-            if not schluessel.startswith("Lf") or not treffer or treffer.group(2) not in systemfarbe:
+            if not schluessel.startswith("Lf"):
                 continue
             if thema != "Light" and schluessel in woerter.get("Light", {}).get("SolidColorBrush", {}):
                 continue  # schon über Light geprüft
+            treffer = VERWEIS.fullmatch(wert)
+            if treffer and treffer.group(2) in rollen and treffer.group(2) not in systemfarbe:
+                continue  # Rolle ohne Systemfarbe, schon gemeldet
             pinsel += 1
-            soll = f"{{ThemeResource {systemfarbe[treffer.group(2)]}}}"
             im_kontrast = kontrast["SolidColorBrush"].get(schluessel)
+            if not treffer or treffer.group(2) not in systemfarbe:
+                # Ohne Rolle gibt es keine Systemfarbe zum Vergleich; fehlen darf der Pinsel trotzdem nicht (#99).
+                if im_kontrast is None:
+                    funde.append(f"{name}:{zeile}: Pinsel {schluessel} fehlt im Wörterbuch HighContrast")
+                continue
+            soll = f"{{ThemeResource {systemfarbe[treffer.group(2)]}}}"
             if im_kontrast is None:
                 funde.append(f"{name}:{zeile}: Pinsel {schluessel} fehlt im Wörterbuch HighContrast (soll Color=\"{soll}\")")
                 continue
@@ -219,20 +234,26 @@ def kontrast_pruefen(pfad: Path, erlaubt: set[str]) -> tuple[list[str], int, int
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="farben-pruefen.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("--export", type=Path, required=True, help="exporte/winui/Firestrike.xaml von firestrike-branding")
+    parser.add_argument("--wurzel", type=Path, help="statt des Git-Repos alle *.xaml unter diesem Ordner (Prüffälle)")
     args = parser.parse_args(argv)
+    wurzel = args.wurzel or Path(".")
     try:
         erlaubt = schluessel_des_exports(args.export)
-        if not Path(APP).is_file():
+        if not (wurzel / APP).is_file():
             raise Unbrauchbar(f"{APP} fehlt (im Wurzelverzeichnis des Repos aufrufen)")
-        dateien = subprocess.run(["git", "ls-files", "-z", "--", "*.xaml"], capture_output=True, check=True).stdout
-        namen = [n for n in dateien.decode("utf-8").split("\0") if n]
+        if args.wurzel:
+            namen = sorted(p.relative_to(wurzel).as_posix() for p in wurzel.rglob("*.xaml")
+                           if not {"bin", "obj", ".git"} & set(p.relative_to(wurzel).parts))
+        else:
+            dateien = subprocess.run(["git", "ls-files", "-z", "--", "*.xaml"], capture_output=True, check=True).stdout
+            namen = [n for n in dateien.decode("utf-8").split("\0") if n]
         funde: list[str] = []
         rollen = 0
         for name in namen:
-            f, r = pruefen(Path(name), name, erlaubt)
+            f, r = pruefen(wurzel / name, name, erlaubt)
             funde += f
             rollen += r
-        f, kontrast_rollen, kontrast_pinsel = kontrast_pruefen(Path(APP), erlaubt)
+        f, kontrast_rollen, kontrast_pinsel = kontrast_pruefen(wurzel / APP, erlaubt)
         funde += f
     except Unbrauchbar as fehler:
         print(fehler, file=sys.stderr)
