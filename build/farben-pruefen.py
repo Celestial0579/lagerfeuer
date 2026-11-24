@@ -16,7 +16,8 @@ Rolle. Ob die Systemfarbe je Rolle die des Exports ist, prüft `marke.py abgleic
     python3 build/farben-pruefen.py --export PFAD/exporte/winui/Firestrike.xaml
 
 Exit-Code 0: keine festen Farbwerte, 1: Funde (je Fund Datei, Zeile und Wert), 2: Aufruf, Export oder eine Datei
-unbrauchbar, oder App.xaml fehlt. Nur Standardbibliothek; die Dateien werden nur gelesen.
+unbrauchbar, oder App.xaml fehlt, 3: Fehler in der Prüfung selbst (mit Traceback), damit ein Absturz nie wie ein Fund
+aussieht. Nur Standardbibliothek; die Dateien werden nur gelesen.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ import argparse
 import re
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 from xml.parsers import expat
 
@@ -95,8 +97,35 @@ def lesen(pfad: Path, beim_start, beim_ende) -> None:
 
 
 def setter_farbe(eintrag: dict) -> bool:
-    """Ist das Element ein Setter für eine Farb-Eigenschaft (Property="Foreground" …)?"""
-    return lokal(eintrag["tag"]) == "Setter" and ist_farb_eigenschaft(eintrag["attribute"].get("Property", ""))
+    """Ist das Element ein Setter für eine Farb-Eigenschaft? Im Stil Property="Foreground", im VisualState
+    Target="Titel.Foreground" (#99)."""
+    attribute = eintrag["attribute"]
+    ziel = attribute.get("Property") or attribute.get("Target", "")
+    return lokal(eintrag["tag"]) == "Setter" and ist_farb_eigenschaft(ziel)
+
+
+def animation_farbe(eintrag: dict) -> bool:
+    """Animiert das Element eine Farb-Eigenschaft (Storyboard.TargetProperty="Foreground" …)?"""
+    ziel = eintrag["attribute"].get("Storyboard.TargetProperty", "")
+    return bool(ziel) and ist_farb_eigenschaft(ziel)
+
+
+def farbwert_attribute(stapel: list[dict], eintrag: dict) -> set[str]:
+    """
+    Attribute, die bei diesem Element eine Farbe tragen, obwohl ihr Name es nicht sagt: Value eines Setters für eine
+    Farb-Eigenschaft, To/From/By einer ColorAnimation, Value eines Farb-Schlüsselbilds oder eines Schlüsselbilds in
+    einer Animation einer Farb-Eigenschaft (#99). Der Stapel endet mit dem Element.
+    """
+    tag = lokal(eintrag["tag"])
+    if tag == "Setter":
+        return {"Value"} if setter_farbe(eintrag) else set()
+    if tag.endswith("ColorAnimation"):
+        return {"To", "From", "By"}
+    if tag.endswith("ColorKeyFrame"):
+        return {"Value"}
+    if tag.endswith("KeyFrame") and len(stapel) >= 2 and animation_farbe(stapel[-2]):
+        return {"Value"}
+    return set()
 
 
 def in_themenwoerterbuch(stapel: list[dict]) -> bool:
@@ -130,7 +159,7 @@ def pruefen(pfad: Path, name: str, erlaubt: set[str]) -> tuple[list[str], int]:
             if HEX.fullmatch(w):
                 funde.append(f"{name}:{eintrag['zeile']}: {lokal(eintrag['tag'])} {k}=\"{w}\": fester Farbwert")
             elif NAME.fullmatch(w) and w not in ERLAUBTE_NAMEN and (
-                    ist_farb_eigenschaft(k) or (setter_farbe(eintrag) and lokal(k) == "Value")):
+                    ist_farb_eigenschaft(k) or lokal(k) in farbwert_attribute(stapel, eintrag)):
                 funde.append(f"{name}:{eintrag['zeile']}: {lokal(eintrag['tag'])} {k}=\"{w}\": Farbname")
 
     def ende(stapel, eintrag, text):
@@ -147,8 +176,9 @@ def pruefen(pfad: Path, name: str, erlaubt: set[str]) -> tuple[list[str], int]:
                              else " (kein Schlüssel des Exports)")
                 funde.append(f"{name}:{eintrag['zeile']}: <{tag}{schluessel}>{text}: fester Farbwert{grund}")
         elif NAME.fullmatch(text) and text not in ERLAUBTE_NAMEN and ist_farb_element(eintrag["tag"]) and (
-                not tag.endswith(".Value") or (len(stapel) >= 2 and setter_farbe(stapel[-2]))):
-            # Ein Setter kann auch „Collapsed“ oder „Bold“ tragen; ein Name zählt nur bei einer Farb-Eigenschaft (#99).
+                not tag.endswith(".Value") or (len(stapel) >= 2 and "Value" in farbwert_attribute(stapel[:-1], stapel[-2]))):
+            # Ein Setter oder Schlüsselbild kann auch „Collapsed“ oder „Bold“ tragen; ein Name zählt nur bei einer
+            # Farb-Eigenschaft (#99).
             funde.append(f"{name}:{eintrag['zeile']}: <{tag}>{text}: Farbname")
 
     lesen(pfad, start, ende)
@@ -273,4 +303,9 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception:  # noqa: BLE001 – ein Fehler der Prüfung selbst darf nie wie ein Fund (1) aussehen
+        traceback.print_exc()
+        print("Fehler in der Prüfung selbst, kein Ergebnis (Exit-Code 3).", file=sys.stderr)
+        sys.exit(3)
